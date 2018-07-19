@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="1.50.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics" Version="2.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.DataAnnotations" Version="2.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Formatters.Json" Version="2.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Server.IISIntegration" Version="2.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="2.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Fiksu">
+      <HintPath>..\..\Fiksu\Fiksu\bin\Debug\netstandard2.0\Fiksu.dll</HintPath>
+    </Reference>
+    <Reference Include="Fiksu.Database">
+      <HintPath>..\..\Fiksu\Fiksu.Database\bin\Debug\netstandard2.0\Fiksu.Database.dll</HintPath>
+    </Reference>
+    <Reference Include="Fiksu.Database.Sqlite">
+      <HintPath>..\..\Fiksu\Fiksu.Database.Sqlite\bin\Debug\netstandard2.0\Fiksu.Database.Sqlite.dll</HintPath>
+    </Reference>
+    <Reference Include="Fiksu.Web">
+      <HintPath>..\..\Fiksu\Fiksu.Web\bin\Debug\netstandard2.0\Fiksu.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="Fiksu.Web.Http">
+      <HintPath>..\..\Fiksu\Fiksu.Web.Http\bin\Debug\netstandard2.0\Fiksu.Web.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="FiksuCore.Web">
+      <HintPath>..\..\Fiksu\FiksuCore.Web\bin\Debug\netcoreapp2.0\FiksuCore.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="FiksuCore.Web.Http">
+      <HintPath>..\..\Fiksu\FiksuCore.Web.Http\bin\Debug\netcoreapp2.0\FiksuCore.Web.Http.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
