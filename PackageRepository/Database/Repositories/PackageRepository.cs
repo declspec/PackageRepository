@@ -11,8 +11,9 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
-        Task CreatePublishedPackageAsync(PublishedPackage package);
-        Task<PackageOverview> GetPackageOverviewAsync(string package);
+        Task CreatePublishedPackageVersionAsync(PublishedPackageVersion package);
+        Task UpdatePackageDistTagsAsync(string package, IDictionary<string, string> distTags);
+        Task<Package> GetPackageAsync(string package);
         /*
 
         Task CreateVersionAsync(PublishedPackage package);
@@ -39,20 +40,16 @@ namespace PackageRepository.Database.Repositories {
             _connectionProvider = connectionProvider;
         }
 
-        public async Task CreatePublishedPackageAsync(PublishedPackage package) {
+        public async Task CreatePublishedPackageVersionAsync(PublishedPackageVersion package) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
-                // Batch all the of the queries
-                var versionTask = connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(package.Version), transaction);
-                var tarballTask = connection.ExecuteAsync(CreateTarballQuery, package.Tarball, transaction);
-
-                var distTagTasks = package.DistTags?.Select(kvp => {
-                    var tag = new DistTagEntity() { Package = package.Version.Id.Name, Tag = kvp.Key, Version = kvp.Value };
-                    return connection.ExecuteAsync(CreateDistTagQuery, tag, transaction);
-                }) ?? Enumerable.Empty<Task>();
+                var tasks = new[] {
+                    connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(package.Version), transaction),
+                    connection.ExecuteAsync(CreateTarballQuery, package.Tarball, transaction)
+                };
 
                 try {
-                    await Task.WhenAll(distTagTasks.Concat(new[] { versionTask, tarballTask })).ConfigureAwait(false);
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                     transaction.Commit();
                 }
                 catch (SqliteException ex) {
@@ -64,7 +61,16 @@ namespace PackageRepository.Database.Repositories {
             }
         }
 
-        public async Task<PackageOverview> GetPackageOverviewAsync(string package) {
+        public async Task UpdatePackageDistTagsAsync(string package, IDictionary<string, string> distTags) {
+            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
+                await Task.WhenAll(distTags.Select(kvp => {
+                    var tag = new DistTagEntity() { Package = package, Tag = kvp.Key, Version = kvp.Value };
+                    return connection.ExecuteAsync(CreateDistTagQuery, tag);
+                }));
+            }
+        }
+
+        public async Task<Package> GetPackageAsync(string package) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
                 var param = new { Package = package };
@@ -79,7 +85,7 @@ namespace PackageRepository.Database.Repositories {
                 if (versions.Count == 0)
                     return null;
 
-                return new PackageOverview() {
+                return new Package() {
                     Name = package,
                     Versions = versions,
                     DistTags = distTagsTask.Result.ToDictionary(r => r.Tag, r => r.Version)
@@ -147,6 +153,6 @@ namespace PackageRepository.Database.Repositories {
                 Version = model.Id.Version,
                 Manifest = model.Manifest
             };
-        }
+        }       
     }
 }

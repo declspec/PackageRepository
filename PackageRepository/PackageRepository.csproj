@@ -39,6 +39,9 @@
     <Reference Include="FiksuCore.Web.Http">
       <HintPath>..\..\Fiksu\FiksuCore.Web.Http\bin\Debug\netcoreapp2.0\FiksuCore.Web.Http.dll</HintPath>
     </Reference>
+    <Reference Include="FiksuCore.Web.Routing">
+      <HintPath>..\..\Fiksu\FiksuCore.Web.Routing\bin\Debug\netcoreapp2.0\FiksuCore.Web.Routing.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

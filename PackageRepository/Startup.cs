@@ -2,6 +2,7 @@
 using Fiksu.Web;
 using FiksuCore.Web.Http.Extensions;
 using FiksuCore.Web.Internal;
+using FiksuCore.Web.Routing;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +17,8 @@ using PackageRepository.Config;
 using PackageRepository.Routing;
 using PackageRepository.Services;
 using System;
+using System.Linq;
+using System.Reflection;
 
 namespace PackageRepository {
     public class Startup {
@@ -56,7 +59,10 @@ namespace PackageRepository {
                 return next.Invoke();
             });
 
-            app.UseMvc();
+            app.UseMvc(opts => {
+                var routes = RegexRouteFinder.FindAll(Assembly.GetExecutingAssembly()).ToList();
+                opts.Routes.Add(new RegexRouter(opts.DefaultHandler, routes));
+            });
 
             app.Use((context, next) => {
                 var result = context.Response.NotFound(context.Request.Path);

@@ -1,18 +1,21 @@
 ﻿using FiksuCore.Web.Http.Extensions;
+using FiksuCore.Web.Routing;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using PackageRepository.Constants;
 using PackageRepository.Models;
 using PackageRepository.Services;
 using PackageRepository.ViewModels;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
 namespace PackageRepository.Controllers {
-    [Route("")]
+    [RegexRoute(Patterns.PackageName)]
     public class PackageController : ControllerBase {
         private static readonly IActionResult BadRequestResponse = new StatusCodeResult((int)HttpStatusCode.BadRequest);
         private static readonly Task<IActionResult> BadRequestResponseTask = Task.FromResult(BadRequestResponse);
@@ -30,84 +33,16 @@ namespace PackageRepository.Controllers {
             _packageService = packageService;
         }
 
-        [HttpPut("-/user/{username}")]
-        public IActionResult Login() {
-            return new JsonResult(new { ok = true, token = "faketaxi" });
+        [HttpPut]
+        [RegexRoute("")]
+        public Task<IActionResult> UpdatePackage(string package, UpdatePackageViewModel vm) {
+            return BadRequestResponseTask;
         }
 
-        [HttpPut("@{scope:packagename}%2f{package:packagename}")]
-        public Task<IActionResult> PublishEscapedScopedPackage(string scope, string package, [FromBody]CreatePackageVersionViewModel viewModel) {
-            return PublishPackageAsync($"@{scope}/{package}", viewModel);
-        }
-
-        [HttpPut("@{scope:packagename}/{package:packagename}")]
-        public Task<IActionResult> PublishScopedPackage(string scope, string package, [FromBody]CreatePackageVersionViewModel viewModel) {
-            return PublishPackageAsync($"@{scope}/{package}", viewModel);
-        }
-
-        [HttpPut("{package:packagename}")]
-        public Task<IActionResult> PublishPackage(string package, [FromBody]CreatePackageVersionViewModel viewModel) {
-            return PublishPackageAsync(package, viewModel);
-        }
-
-        [HttpGet("@{scope:packagename}%2f{package:packagename}")]
-        public Task<IActionResult> GetEscapedScopedPackage(string scope, string package) {
-            return GetPackage($"@{scope}/{package}");
-        }
-
-        [HttpGet("@{scope:packagename}/{package:packagename}")]
-        public Task<IActionResult> GetScopedPackage(string scope, string package) {
-            return GetPackage($"@{scope}/{package}");
-        }
-
-        [HttpGet("{package:packagename}")]
-        public Task<IActionResult> GetPackage(string package) {
-            return GetPackageAsync(package);
-        }
-
-        [HttpGet("@{scope:packagename}/{package:packagename}/-/@{scope2:packagename}/{package2:packagename}-{version:semver}.tgz")]
-        public Task<IActionResult> GetScopedTarball(string scope, string package, string scope2, string package2, string version) {
-            return (scope == scope2 && package == package2) 
-                ? GetTarballAsync($"@{scope}/{package}", version) 
-                : BadRequestResponseTask;
-        }
-
-        [HttpGet("{package:packagename}/-/{package2:packagename}-{version:semver}.tgz")]
-        public Task<IActionResult> GetTarball(string package, string package2, string version) {
-            return package == package2 
-                ? GetTarballAsync(package, version) 
-                : BadRequestResponseTask;
-        }
-
-        public async Task<IActionResult> PublishPackageAsync(string package, CreatePackageVersionViewModel viewModel) {
-            if (!ModelState.IsValid || viewModel.Versions.Count != 1 || viewModel.Attachments.Count != 1)
-                return BadRequestResponse;
-
-            var version = viewModel.Versions.Keys.First();
-            var attachment = viewModel.Attachments.Keys.First();
-            var identifier = new PackageIdentifier(viewModel.Name, version);
-
-            var packageModel = new PackageVersion() {
-                Id = identifier,
-                Manifest = JsonConvert.SerializeObject(viewModel.Versions[version], DefaultSerializerSettings)
-            };
-
-            var tarballModel = new Tarball() {
-                Package = identifier,
-                Data = Convert.FromBase64String(viewModel.Attachments[attachment].Data)
-            };
-
-            await _packageService.PublishPackageAsync(new PublishedPackage() {
-                Version = packageModel,
-                Tarball = tarballModel,
-                DistTags = viewModel.DistTags
-            });
-
-            return Response.Created(null);
-        }
-
-        public async Task<IActionResult> GetPackageAsync(string package) {
-            var overview = await _packageService.GetPackageOverviewAsync(package);
+        [HttpGet]
+        [RegexRoute("")]
+        public async Task<IActionResult> GetPackage(string package) {
+            var overview = await _packageService.GetPackageAsync(NormalizePackageName(package));
 
             if (overview == null)
                 return new NotFoundResult();
@@ -132,14 +67,59 @@ namespace PackageRepository.Controllers {
                     jsonWriter.WriteEndObject();
                 }
 
-                return new FileContentResult(ms.ToArray(), "application/json; charset=utf-8");
+                return new FileStreamResult(ms, "application/json; charset=utf-8");
             }
+        }
+
+        [HttpGet]
+        [RegexRoute(@"-/\k<package>-" + Patterns.SemVer + @"\.tgz")]
+        public Task<IActionResult> GetTarball(string package, string version) {
+            return BadRequestResponseTask;
+            //var tarball = await _tarballRepository.GetByPackageVersionAsync(package, version);
+            //return new FileContentResult(tarball.Data, "application/octet-stream");
+        }
+
+        public async Task<IActionResult> UpdatePackageAsync(string package, UpdatePackageViewModel viewModel) {
+            if (!ModelState.IsValid || viewModel.Versions.Count == 0 || package != viewModel.Name)
+                return BadRequestResponse;
+
+            var tasks = new List<Task>();
+
+            foreach(var kvp in viewModel.Versions) {
+                var version = new PackageVersion() {
+                    Id = new PackageIdentifier(NormalizePackageName(package), kvp.Key),
+                    Manifest = JsonConvert.SerializeObject(kvp.Value, DefaultSerializerSettings)
+                };
+
+                // Assume a publish if there
+                if (viewModel.Attachments == null || !viewModel.Attachments.TryGetValue(version.Id.Version, out var attachment))
+                    tasks.Add(_packageService.UpdatePackageVersionAsync(version));
+                else { 
+                    tasks.Add(_packageService.PublishPackageVersionAsync(new PublishedPackageVersion() {
+                        Version = version,
+                        Tarball = new Tarball() {
+                            Package = version.Id,
+                            Data = Convert.FromBase64String(attachment.Data)
+                        }
+                    }));
+                }
+            }
+
+            if (tasks.Count == 0)
+                return BadRequestResponse;
+
+            await Task.WhenAll(tasks);
+            return Response.Ok(null);
         }
 
         private Task<IActionResult> GetTarballAsync(string package, string version) {
             return BadRequestResponseTask;
             //var tarball = await _tarballRepository.GetByPackageVersionAsync(package, version);
             //return new FileContentResult(tarball.Data, "application/octet-stream");
+        }
+
+        private static string NormalizePackageName(string package) {
+            return package.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
