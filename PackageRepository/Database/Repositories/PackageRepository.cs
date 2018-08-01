@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using Fiksu.Database;
 using Microsoft.Data.Sqlite;
+using PackageRepository.Constants;
 using PackageRepository.Database.Entities;
 using PackageRepository.Errors;
 using PackageRepository.Models;
@@ -11,9 +12,13 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
-        Task CreatePublishedPackageVersionAsync(PublishedPackageVersion package);
-        Task UpdatePackageDistTagsAsync(string package, IDictionary<string, string> distTags);
+        Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
+        Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
+        Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions);
+        Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
+
         Task<Package> GetPackageAsync(string package);
+        Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
         /*
 
         Task CreateVersionAsync(PublishedPackage package);
@@ -33,6 +38,7 @@ namespace PackageRepository.Database.Repositories {
         private static readonly string CreatePackageVersionQuery = GetCreatePackageVersionQuery();
         private static readonly string CreateTarballQuery = GetCreateTarballQuery();
         private static readonly string SelectTarballQuery = GetSelectTarballQuery();
+        private static readonly string UpdatePackageVersionQuery = GetUpdatePackageVersionQuery();
 
         private readonly IDbConnectionProvider _connectionProvider;
 
@@ -40,15 +46,15 @@ namespace PackageRepository.Database.Repositories {
             _connectionProvider = connectionProvider;
         }
 
-        public async Task CreatePublishedPackageVersionAsync(PublishedPackageVersion package) {
+        public async Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
-                var tasks = new[] {
-                    connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(package.Version), transaction),
-                    connection.ExecuteAsync(CreateTarballQuery, package.Tarball, transaction)
-                };
-
                 try {
+                    var tasks = packages.SelectMany(pkg => new Task[] {
+                        connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg.Version), transaction),
+                        connection.ExecuteAsync(CreateTarballQuery, pkg.Tarball, transaction)
+                    });
+
                     await Task.WhenAll(tasks).ConfigureAwait(false);
                     transaction.Commit();
                 }
@@ -56,12 +62,25 @@ namespace PackageRepository.Database.Repositories {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
                     // Best place for this as any other check (i.e. a pre-emptive SELECT) could potentially race.
-                    throw new DuplicatePackageVersionException(package.Version.Id, ex);
+                    throw new PackageException(ErrorCodes.VersionConflict, ex);
                 }
             }
         }
 
-        public async Task UpdatePackageDistTagsAsync(string package, IDictionary<string, string> distTags) {
+        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> packages) {
+            return UpdatePackageVersionsAsync(packages.Select(ToEntity));
+        }
+
+        public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
+            return UpdatePackageVersionsAsync(identifiers.Select(id =>  new PackageVersionEntity() {
+                Package = id.Name,
+                Version = id.Version,
+                Published = false,
+                Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
+            }));
+        }
+
+        public async Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
                 await Task.WhenAll(distTags.Select(kvp => {
                     var tag = new DistTagEntity() { Package = package, Tag = kvp.Key, Version = kvp.Value };
@@ -75,7 +94,7 @@ namespace PackageRepository.Database.Repositories {
             using (var transaction = connection.BeginTransaction()) {
                 var param = new { Package = package };
 
-                var versionsTask = GetVersionsWhere("package = @Package", param, connection, transaction);
+                var versionsTask = GetVersionsWhere("package = @Package AND published = 1", param, connection, transaction);
                 var distTagsTask = GetDistTagsWhere("package = @Package", param, connection, transaction);
 
                 await Task.WhenAll(versionsTask, distTagsTask).ConfigureAwait(false);
@@ -90,6 +109,22 @@ namespace PackageRepository.Database.Repositories {
                     Versions = versions,
                     DistTags = distTagsTask.Result.ToDictionary(r => r.Tag, r => r.Version)
                 };
+            }
+        }
+
+        public async Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
+            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
+                var entity = await connection.QuerySingleAsync<TarballEntity>(SelectTarballQuery, identifier);
+                return ToModel(entity);
+            }
+        }
+
+        private async Task UpdatePackageVersionsAsync(IEnumerable<PackageVersionEntity> entities) {
+            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
+            using (var transaction = connection.BeginTransaction()) {
+                var tasks = entities.Select(pkg => connection.ExecuteAsync(UpdatePackageVersionQuery, pkg, transaction));
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                transaction.Commit();
             }
         }
         
@@ -123,10 +158,18 @@ namespace PackageRepository.Database.Repositories {
 
         private static string GetCreateTarballQuery() {
             return $@"INSERT INTO { Tables.PackageTarballs } (package, version, data) VALUES (
-                @{nameof(Tarball.Package.Name)},
-                @{nameof(Tarball.Package.Version)},
-                @{nameof(Tarball.Data)}
+                @{nameof(TarballEntity.Package)},
+                @{nameof(TarballEntity.Version)},
+                @{nameof(TarballEntity.Data)}
             );";
+        }
+
+        private static string GetUpdatePackageVersionQuery() {
+            return $@"UPDATE { Tables.PackageVersions } SET 
+                manifest = COALESCE(@{nameof(PackageVersionEntity.Manifest)}, manifest),
+                published = @{nameof(PackageVersionEntity.Published)}, 
+                date_modified = CURRENT_TIMESTAMP
+                WHERE package = @{nameof(PackageVersionEntity.Package)} AND version = @{nameof(PackageVersionEntity.Version)}";
         }
 
         private static string GetSelectTarballQuery() {
@@ -135,24 +178,33 @@ namespace PackageRepository.Database.Repositories {
         }
 
         private static PackageVersion ToModel(PackageVersionEntity entity) {
-            if (entity == null)
-                return null;
-
-            return new PackageVersion() {
+            return entity == null ? null : new PackageVersion() {
                 Id = new PackageIdentifier(entity.Package, entity.Version),
                 Manifest = entity.Manifest
             };
         }
 
-        private static PackageVersionEntity ToEntity(PackageVersion model) {
-            if (model == null)
-                return null;
+        private static Tarball ToModel(TarballEntity entity) {
+            return entity == null ? null : new Tarball() {
+                Package = new PackageIdentifier(entity.Package, entity.Version),
+                Data = entity.Data
+            };
+        }
 
-            return new PackageVersionEntity() {
+        private static PackageVersionEntity ToEntity(PackageVersion model) {
+            return model == null ? null : new PackageVersionEntity() {
                 Package = model.Id.Name,
                 Version = model.Id.Version,
                 Manifest = model.Manifest
             };
-        }       
+        }
+        
+        private static TarballEntity ToEntity(Tarball model) {
+            return model == null ? null : new TarballEntity() {
+                Package = model.Package.Name,
+                Version = model.Package.Version,
+                Data = model.Data
+            };
+        }
     }
 }

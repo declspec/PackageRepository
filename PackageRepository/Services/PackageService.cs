@@ -8,12 +8,13 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Services {
     public interface IPackageService {
-        Task PublishPackageVersionAsync(PublishedPackageVersion package);
-        Task UnpublishPackageVersionAsync(PackageIdentifier identifier);
+        Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
+        Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
         Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions);
         Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
 
         Task<Package> GetPackageAsync(string package);
+        Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
     }
 
     public class PackageService : IPackageService {
@@ -23,24 +24,28 @@ namespace PackageRepository.Services {
             _repository = repository;
         }
 
-        public Task PublishPackageVersionAsync(PublishedPackageVersion package) {
-            return _repository.CreatePublishedPackageVersionAsync(package);
+        public Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions) {
+            return _repository.PublishPackageVersionsAsync(versions);
         }
 
-        public Task UnpublishPackageVersionAsync(PackageIdentifier identifier) {
-            throw new System.NotImplementedException();
+        public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
+            return _repository.UnpublishPackageVersionsAsync(identifiers);
         }
 
-        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> version) {
-            throw new System.NotImplementedException();
+        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions) {
+            return _repository.UpdatePackageVersionsAsync(versions);
         }
 
         public Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
-            return _repository.UpdatePackageDistTagsAsync(package, distTags);
+            return _repository.SetDistTagsAsync(package, distTags);
         }
 
         public Task<Package> GetPackageAsync(string package) {
             return _repository.GetPackageAsync(package);
+        }
+
+        public Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
+            return _repository.GetTarballAsync(identifier);
         }
 
         private static string ComputeHash(byte[] data) {

@@ -1,5 +1,4 @@
-﻿using FiksuCore.Web.Http.Extensions;
-using FiksuCore.Web.Routing;
+﻿using FiksuCore.Web.Routing;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -10,7 +9,6 @@ using PackageRepository.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -18,7 +16,11 @@ namespace PackageRepository.Controllers {
     [RegexRoute(Patterns.PackageName)]
     public class PackageController : ControllerBase {
         private static readonly IActionResult BadRequestResponse = new StatusCodeResult((int)HttpStatusCode.BadRequest);
+        private static readonly IActionResult NotFoundResponse = new StatusCodeResult((int)HttpStatusCode.NotFound);
+        private static readonly IActionResult OkResponse = new StatusCodeResult((int)HttpStatusCode.OK);
+
         private static readonly Task<IActionResult> BadRequestResponseTask = Task.FromResult(BadRequestResponse);
+        private static readonly Task<IActionResult> NotFoundResponseTask = Task.FromResult(NotFoundResponse);
 
         private static readonly JsonSerializerSettings DefaultSerializerSettings = new JsonSerializerSettings() {
             NullValueHandling = NullValueHandling.Ignore,
@@ -47,69 +49,84 @@ namespace PackageRepository.Controllers {
             if (overview == null)
                 return new NotFoundResult();
 
-            using (var ms = new MemoryStream()) {
-                using (var sw = new StreamWriter(ms))
-                using (var jsonWriter = new JsonTextWriter(sw)) {
-                    jsonWriter.WriteStartObject();
-                    jsonWriter.WritePropertyName("name");
-                    jsonWriter.WriteValue(package);
-                    jsonWriter.WritePropertyName("dist-tags");
-                    jsonWriter.WriteRawValue(JsonConvert.SerializeObject(overview.DistTags));
-                    jsonWriter.WritePropertyName("versions");
-                    jsonWriter.WriteStartObject();
+            var sw = new StreamWriter(new MemoryStream());
+
+            try {
+                using (var writer = new JsonTextWriter(sw)) {
+                    writer.CloseOutput = false;
+
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("name");
+                    writer.WriteValue(package);
+                    writer.WritePropertyName("dist-tags");
+                    writer.WriteRawValue(JsonConvert.SerializeObject(overview.DistTags));
+                    writer.WritePropertyName("versions");
+                    writer.WriteStartObject();
 
                     foreach (var version in overview.Versions) {
-                        jsonWriter.WritePropertyName(version.Id.Version);
-                        jsonWriter.WriteRawValue(version.Manifest);
+                        writer.WritePropertyName(version.Id.Version);
+                        writer.WriteRawValue(version.Manifest);
                     }
 
-                    jsonWriter.WriteEndObject();
-                    jsonWriter.WriteEndObject();
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                    writer.Flush();
                 }
-
-                return new FileStreamResult(ms, "application/json; charset=utf-8");
+                
+                sw.BaseStream.Position = 0;
+                return new FileStreamResult(sw.BaseStream, "application/json; charset=utf-8");
+            }
+            catch(Exception) {
+                if (sw != null)
+                    sw.Dispose();
+                throw;
             }
         }
 
         [HttpGet]
         [RegexRoute(@"-/\k<package>-" + Patterns.SemVer + @"\.tgz")]
-        public Task<IActionResult> GetTarball(string package, string version) {
-            return BadRequestResponseTask;
-            //var tarball = await _tarballRepository.GetByPackageVersionAsync(package, version);
-            //return new FileContentResult(tarball.Data, "application/octet-stream");
+        public async Task<IActionResult> GetTarball(string package, string version) {
+            var identifier = new PackageIdentifier(package, version);
+            var tarball = await _packageService.GetTarballAsync(identifier);
+
+            if (tarball == null)
+                return NotFoundResponse;
+
+            return File(tarball.Data, "application/octet-stream");
         }
 
         public async Task<IActionResult> UpdatePackageAsync(string package, UpdatePackageViewModel viewModel) {
             if (!ModelState.IsValid || viewModel.Versions.Count == 0 || package != viewModel.Name)
                 return BadRequestResponse;
 
-            var tasks = new List<Task>();
+            if (viewModel.Attachments == null)
+                return BadRequestResponse;
+            else {
+                // If there are attachments, assume it's a publish action (no support for a simultaneous publish+update as yet)
+                var versions = new List<PublishedPackageVersion>();
 
-            foreach(var kvp in viewModel.Versions) {
-                var version = new PackageVersion() {
-                    Id = new PackageIdentifier(NormalizePackageName(package), kvp.Key),
-                    Manifest = JsonConvert.SerializeObject(kvp.Value, DefaultSerializerSettings)
-                };
+                foreach(var kvp in viewModel.Attachments) {
+                    var identifer = new PackageIdentifier(package, kvp.Key);
 
-                // Assume a publish if there
-                if (viewModel.Attachments == null || !viewModel.Attachments.TryGetValue(version.Id.Version, out var attachment))
-                    tasks.Add(_packageService.UpdatePackageVersionAsync(version));
-                else { 
-                    tasks.Add(_packageService.PublishPackageVersionAsync(new PublishedPackageVersion() {
-                        Version = version,
+                    if (!viewModel.Versions.TryGetValue(identifer.Version, out var manifest))
+                        return BadRequestResponse;
+
+                    versions.Add(new PublishedPackageVersion() {
+                        Version = new PackageVersion() {
+                            Id = identifer,
+                            Manifest = JsonConvert.SerializeObject(manifest, DefaultSerializerSettings)
+                        },
                         Tarball = new Tarball() {
-                            Package = version.Id,
-                            Data = Convert.FromBase64String(attachment.Data)
+                            Package = identifer,
+                            Data = Convert.FromBase64String(kvp.Value.Data)
                         }
-                    }));
+                    });
                 }
+
+                await _packageService.PublishPackageVersionsAsync(versions);
             }
 
-            if (tasks.Count == 0)
-                return BadRequestResponse;
-
-            await Task.WhenAll(tasks);
-            return Response.Ok(null);
+            return OkResponse;
         }
 
         private Task<IActionResult> GetTarballAsync(string package, string version) {
@@ -119,7 +136,8 @@ namespace PackageRepository.Controllers {
         }
 
         private static string NormalizePackageName(string package) {
-            return package.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase);
+            return package.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase)
+                .Replace("%40", "@", StringComparison.Ordinal);
         }
     }
 }
