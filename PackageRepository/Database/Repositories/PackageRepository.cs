@@ -1,6 +1,8 @@
 ﻿using Dapper;
 using Fiksu.Database;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using PackageRepository.Constants;
 using PackageRepository.Database.Entities;
 using PackageRepository.Errors;
@@ -19,15 +21,7 @@ namespace PackageRepository.Database.Repositories {
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
-        /*
-
-        Task CreateVersionAsync(PublishedPackage package);
-        Task<PublishedPackage> GetPackageVersionAsync(PackageIdentifier identifier);
-        Task<IList<PackageVersion>> GetPackageVersionsAsync(string packageName);
-
-        Task<IDictionary<string, string>> GetPackageDistTagsAsync(string packageName);
-
-        Task<Tarball> GetPackageTarballAsync(PackageIdentifier identifier);*/
+        Task<PackageVersion> GetPackageVersionAsync(PackageIdentifier identifier);
     }
 
     public class PackageRepository : IPackageRepository {
@@ -40,6 +34,13 @@ namespace PackageRepository.Database.Repositories {
         private static readonly string SelectTarballQuery = GetSelectTarballQuery();
         private static readonly string UpdatePackageVersionQuery = GetUpdatePackageVersionQuery();
 
+        private static readonly JsonSerializerSettings DefaultSerializerSettings = new JsonSerializerSettings() {
+            NullValueHandling = NullValueHandling.Ignore,
+            ContractResolver = new DefaultContractResolver() {
+                NamingStrategy = new CamelCaseNamingStrategy()
+            }
+        };
+
         private readonly IDbConnectionProvider _connectionProvider;
 
         public PackageRepository(IDbConnectionProvider connectionProvider) {
@@ -50,7 +51,7 @@ namespace PackageRepository.Database.Repositories {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
                 try {
-                    var tasks = packages.SelectMany(pkg => new Task[] {
+                    var tasks = versions.SelectMany(pkg => new Task[] {
                         connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg.Version), transaction),
                         connection.ExecuteAsync(CreateTarballQuery, pkg.Tarball, transaction)
                     });
@@ -109,6 +110,13 @@ namespace PackageRepository.Database.Repositories {
                     Versions = versions,
                     DistTags = distTagsTask.Result.ToDictionary(r => r.Tag, r => r.Version)
                 };
+            }
+        }
+
+        public async Task<PackageVersion> GetPackageVersionAsync(PackageIdentifier identifier) {
+            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
+                var versions = await GetVersionsWhere("package = @Name AND version = @Version AND published = 1", identifier, connection);
+                return ToModel(versions.SingleOrDefault());
             }
         }
 
@@ -180,7 +188,7 @@ namespace PackageRepository.Database.Repositories {
         private static PackageVersion ToModel(PackageVersionEntity entity) {
             return entity == null ? null : new PackageVersion() {
                 Id = new PackageIdentifier(entity.Package, entity.Version),
-                Manifest = entity.Manifest
+                Manifest = JsonConvert.DeserializeObject<Manifest>(entity.Manifest, DefaultSerializerSettings)
             };
         }
 
@@ -195,7 +203,8 @@ namespace PackageRepository.Database.Repositories {
             return model == null ? null : new PackageVersionEntity() {
                 Package = model.Id.Name,
                 Version = model.Id.Version,
-                Manifest = model.Manifest
+                Published = true,
+                Manifest = JsonConvert.SerializeObject(model.Manifest, DefaultSerializerSettings)
             };
         }
         

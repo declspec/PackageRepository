@@ -14,7 +14,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using PackageRepository.Config;
-using PackageRepository.Routing;
 using PackageRepository.Services;
 using System;
 using System.Linq;
@@ -38,13 +37,8 @@ namespace PackageRepository {
 
             services.AddMvcCore().AddDataAnnotations().AddJsonFormatters(settings => {
                 settings.ContractResolver = new DefaultContractResolver() { NamingStrategy = new CamelCaseNamingStrategy() };
+                settings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
                 settings.Converters.Add(new StringEnumConverter());
-            });
-
-            services.Configure<RouteOptions>(opts => {
-                opts.LowercaseUrls = true;
-                opts.ConstraintMap.Add("semver", typeof(SemVerRouteConstraint));
-                opts.ConstraintMap.Add("packagename", typeof(PackageNameRouteConstraint));
             });
 
             services.AddSingleton<IPackageService, PackageService>();

@@ -1,16 +1,16 @@
-﻿using PackageRepository.Database.Repositories;
+﻿using PackageRepository.Constants;
+using PackageRepository.Database.Repositories;
+using PackageRepository.Errors;
 using PackageRepository.Models;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace PackageRepository.Services {
     public interface IPackageService {
         Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
         Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
-        Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions);
+        Task UpdatePackageVersionsAsync(string package, IEnumerable<PackageVersion> versions);
         Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
 
         Task<Package> GetPackageAsync(string package);
@@ -32,8 +32,21 @@ namespace PackageRepository.Services {
             return _repository.UnpublishPackageVersionsAsync(identifiers);
         }
 
-        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions) {
-            return _repository.UpdatePackageVersionsAsync(versions);
+        public async Task UpdatePackageVersionsAsync(string package, IEnumerable<PackageVersion> versions) {
+            var overview = await _repository.GetPackageAsync(package).ConfigureAwait(false);
+
+            if (overview == null)
+                throw new PackageException(ErrorCodes.PackageNotFound);
+
+            await _repository.UpdatePackageVersionsAsync(versions.Select(version => {
+                var matching = overview.Versions.SingleOrDefault(v => v.Id == version.Id)
+                    ?? throw new PackageException(ErrorCodes.VersionNotFound);
+
+                // Only update specific fields
+                matching.Manifest.Deprecated = version.Manifest.Deprecated;
+
+                return matching;
+            }));
         }
 
         public Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
@@ -46,14 +59,6 @@ namespace PackageRepository.Services {
 
         public Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
             return _repository.GetTarballAsync(identifier);
-        }
-
-        private static string ComputeHash(byte[] data) {
-            using (var provider = new SHA256CryptoServiceProvider()) {
-                return provider.ComputeHash(data)
-                    .Aggregate(new StringBuilder(64), (sb, b) => sb.Append(b.ToString("x2")))
-                    .ToString();
-            }
         }
     }
 }
