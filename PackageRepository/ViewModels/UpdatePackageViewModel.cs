@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using PackageRepository.Models;
+using PackageRepository.Utils;
 
 namespace PackageRepository.ViewModels {
     public class UpdatePackageViewModel : PackageViewModel {
@@ -12,7 +14,7 @@ namespace PackageRepository.ViewModels {
             var results = base.InternalValidate(validationContext);
 
             if (Attachments != null) {
-                if (Attachments.Count != Versions.Count || Attachments.Any(kvp => !Versions.ContainsKey(kvp.Key) || !IsValidAttachment(kvp.Value)))
+                if (!ValidateAttachments())
                     results.Add(new ValidationResult("Invalid attachments hash encountered"));
 
                 if (DistTags == null || DistTags.Count == 0)
@@ -22,8 +24,10 @@ namespace PackageRepository.ViewModels {
             return results;
         }
 
-        private static bool IsValidAttachment(AttachmentViewModel attachment) {
-            return IsValidBase64String(attachment.Data);
+        private bool ValidateAttachments()
+        {
+            return Attachments.Count == Versions.Count
+                && Attachments.All(kvp => Versions.Any(v => PackageUtils.GetTarballName(Name, v.Key) == kvp.Key) && IsValidBase64String(kvp.Value.Data));
         }
 
         private static bool IsValidBase64String(string str) {

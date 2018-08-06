@@ -1,13 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace PackageRepository.Controllers {
-    [Route("")]
     public class UserController : ControllerBase {
         [HttpPut("-/user/{username}")]
-        public IActionResult Login() {
+        public IActionResult Login(string username) {
             return new JsonResult(new { ok = true, token = "faketaxi" });
         }
     }

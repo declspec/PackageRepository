@@ -1,6 +1,5 @@
 ﻿namespace PackageRepository.Models {
-    public class PublishedPackageVersion {
-        public PackageVersion Version { get; set; }
+    public class PublishedPackageVersion : PackageVersion {
         public Tarball Tarball { get; set; }
     }
 }

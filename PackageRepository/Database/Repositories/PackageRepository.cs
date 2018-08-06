@@ -52,8 +52,8 @@ namespace PackageRepository.Database.Repositories {
             using (var transaction = connection.BeginTransaction()) {
                 try {
                     var tasks = versions.SelectMany(pkg => new Task[] {
-                        connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg.Version), transaction),
-                        connection.ExecuteAsync(CreateTarballQuery, pkg.Tarball, transaction)
+                        connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg), transaction),
+                        connection.ExecuteAsync(CreateTarballQuery, ToEntity(pkg.Tarball), transaction)
                     });
 
                     await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -73,7 +73,7 @@ namespace PackageRepository.Database.Repositories {
         }
 
         public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
-            return UpdatePackageVersionsAsync(identifiers.Select(id =>  new PackageVersionEntity() {
+            return UpdatePackageVersionsAsync(identifiers.Select(id => new PackageVersionEntity() {
                 Package = id.Name,
                 Version = id.Version,
                 Published = false,
