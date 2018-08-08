@@ -9,13 +9,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using PackageRepository.Exceptions;
 using PackageRepository.Utils;
 
 namespace PackageRepository.Controllers {
     [RegexRoute(Patterns.PackageName)]
     public class PackageController : ControllerBase {
-        private static readonly IActionResult NotFoundResponse = Error("package not found", HttpStatusCode.NotFound);
+        private const string TarballRoute = @"-/\k<package>-" + Patterns.SemVer + @"\.tgz";
+        private const string RevisionRoute = "-rev/(?<revision>.+)";
+
+        private static readonly IActionResult PackageNotFoundResponse = Error("package not found", HttpStatusCode.NotFound);
         private static readonly IActionResult BadRequestResponse = Error("invalid request", HttpStatusCode.BadRequest);
+        private static readonly IActionResult DuplicateVersionResponse = Error("cannot overwrite existing package version", HttpStatusCode.NotAcceptable);
 
         private readonly IPackageService _packageService;
 
@@ -29,10 +34,16 @@ namespace PackageRepository.Controllers {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;
 
-            await _packageService.CommitAsync(vm.Name, ToChangeset(vm));
-            await _packageService.SetDistTagsAsync(vm.Name, vm.DistTags);
-            
-            return Ok("updated package");
+            try {
+                await _packageService.CommitAsync(vm.Name, ToChangeset(vm));
+                return Ok("updated package");
+            }
+            catch(DuplicatePackageVersionException) {
+                return DuplicateVersionResponse;
+            }
+            catch (PackageVersionNotFoundException nfe) {
+                return Error($"package version not found ({nfe.Identifier.Version})", HttpStatusCode.BadRequest);
+            }
         }
 
         [HttpGet]
@@ -41,7 +52,7 @@ namespace PackageRepository.Controllers {
             var overview = await _packageService.GetPackageAsync(PackageUtils.UnescapeName(package));
 
             if (overview == null)
-                return NotFoundResponse;
+                return PackageNotFoundResponse;
 
             return new JsonResult(new PackageViewModel() {
                 Name = overview.Name,
@@ -51,60 +62,68 @@ namespace PackageRepository.Controllers {
         }
 
         [HttpGet]
-        [RegexRoute(@"-/\k<package>-" + Patterns.SemVer + @"\.tgz")]
+        [RegexRoute(TarballRoute)]
         public async Task<IActionResult> GetTarball(string package, string version) {
             var identifier = new PackageIdentifier(package, version);
             var tarball = await _packageService.GetTarballAsync(identifier);
 
             if (tarball == null)
-                return NotFoundResponse;
+                return PackageNotFoundResponse;
 
             return File(tarball.Data, "application/octet-stream");
         }
 
         [HttpDelete]
-        [RegexRoute("-rev/(?<revision>.+)")]
+        [RegexRoute(TarballRoute + "/" + RevisionRoute)]
+        public IActionResult DeleteTarball() {
+            // no-op here as we don't want to actually delete the data.
+            return Ok("removed tarball");
+        }
+
+        [HttpDelete]
+        [RegexRoute(RevisionRoute)]
         public async Task<IActionResult> UnpublishPackageAsync(string package, string revision) {
             var overview = await _packageService.GetPackageAsync(PackageUtils.UnescapeName(package));
 
             if (overview == null)
-                return NotFoundResponse;
+                return PackageNotFoundResponse;
 
             var changeset = new PackageChangeset() {
-                Deleted = overview.Versions.Select(v => v.Id).ToList()
+                DeletedVersions = overview.Versions.Select(v => v.Id).ToList()
             };
-
+            
             await _packageService.CommitAsync(overview.Name, changeset);
             return Ok("removed all package versions");
         }
 
         [HttpPut]
-        [RegexRoute("-rev/(?<revision>.+)")]
+        [RegexRoute(RevisionRoute)]
         public async Task<IActionResult> UpdatePackageAsync(string package, string revision, [FromBody]UpdatePackageViewModel vm) {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;
 
-            var overview = await _packageService.GetPackageAsync(package);
+            var overview = await _packageService.GetPackageAsync(vm.Name);
 
             if (overview == null)
-                return NotFoundResponse;
+                return PackageNotFoundResponse;
 
             var changeset = ToChangeset(vm);
 
             // Allow for deletes when a revision is specified (this is basically a 'replace the model' update)
-            changeset.Deleted = overview.Versions.Select(v => v.Id)
+            changeset.DeletedVersions = overview.Versions.Select(v => v.Id)
                 .Where(id => !vm.Versions.ContainsKey(id.Version))
                 .ToList();
 
-            await _packageService.CommitAsync(overview.Name, changeset);
-
-            var results = new [] {
-                Tuple.Create(changeset.Published.Count, "published"),
-                Tuple.Create(changeset.Updated.Count, "updated"),
-                Tuple.Create(changeset.Deleted.Count, "unpublished")
-            };
-
-            return Ok(string.Join(", ", results.Where(t => t.Item1 > 0).Select(t => $"{t.Item1} {t.Item2}")));
+            try {
+                await _packageService.CommitAsync(overview.Name, changeset);
+                return Ok(GetResults(changeset));
+            }
+            catch(DuplicatePackageVersionException) {
+                return DuplicateVersionResponse;
+            }
+            catch(PackageVersionNotFoundException nfe) {
+                return Error($"package version not found ({nfe.Identifier.Version})", HttpStatusCode.BadRequest);
+            }
         }
 
         private static IActionResult Ok(string message) {
@@ -115,23 +134,34 @@ namespace PackageRepository.Controllers {
             return new JsonResult(new { error = message }) { StatusCode = (int)status };
         }
 
+        private static string GetResults(IPackageChangeset changeset) {
+            var results = new[] {
+                Tuple.Create(changeset.PublishedVersions.Count, "published"),
+                Tuple.Create(changeset.UpdatedVersions.Count, "updated"),
+                Tuple.Create(changeset.DeletedVersions.Count, "unpublished")
+            };
+
+            return string.Join(", ", results.Where(t => t.Item1 > 0).Select(t => $"{t.Item1} {t.Item2}"));
+        }
+
         private static PackageChangeset ToChangeset(UpdatePackageViewModel vm) {
             var changeset = new PackageChangeset() {
-                Updated = new List<PackageVersion>(),
-                Published = new List<PublishedPackageVersion>()
+                UpdatedVersions = new List<PackageVersion>(),
+                PublishedVersions = new List<PublishedPackageVersion>(),
+                UpdatedDistTags = vm.DistTags
             };
 
             foreach (var kvp in vm.Versions) {
                 var id = new PackageIdentifier(vm.Name, kvp.Key);
 
                 if (vm.Attachments == null || !vm.Attachments.TryGetValue(PackageUtils.GetTarballName(id), out var attachment)) {
-                    changeset.Updated.Add(new PackageVersion() {
+                    changeset.UpdatedVersions.Add(new PackageVersion() {
                         Id = id,
                         Manifest = kvp.Value
                     });
                 }
                 else {
-                    changeset.Published.Add(new PublishedPackageVersion() {
+                    changeset.PublishedVersions.Add(new PublishedPackageVersion() {
                         Id = id,
                         Manifest = kvp.Value,
                         Tarball = new Tarball() {

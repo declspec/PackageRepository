@@ -1,10 +1,9 @@
 ﻿using PackageRepository.Models;
 using System;
 
-namespace PackageRepository.Errors {
-    public class DuplicatePackageVersionException : Exception
-    {
-        public PackageIdentifier Package { get; }
+namespace PackageRepository.Exceptions {
+    public class DuplicatePackageVersionException : Exception {
+        public PackageIdentifier Identifier { get; }
 
         public DuplicatePackageVersionException(PackageIdentifier identifier, string message)
             : this(identifier, message, null) { }
@@ -13,7 +12,7 @@ namespace PackageRepository.Errors {
             : this(identifier, null, innerException) { }
 
         public DuplicatePackageVersionException(PackageIdentifier identifier, string message, Exception innerException) : base(message, innerException) {
-            Package = identifier;
+            Identifier = identifier;
         }
     }
 }

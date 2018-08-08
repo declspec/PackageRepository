@@ -2,7 +2,6 @@
     public class PackageIdentifier {
         public string Name { get; }
         public string Version { get; }
-        public string TarballName { get => $"{Name}-{Version}.tgz"; }
 
         public PackageIdentifier(string name, string version) {
             Name = name;

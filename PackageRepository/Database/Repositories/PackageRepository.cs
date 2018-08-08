@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using PackageRepository.Constants;
 using PackageRepository.Database.Entities;
-using PackageRepository.Errors;
+using PackageRepository.Exceptions;
 using PackageRepository.Models;
 using System.Collections.Generic;
 using System.Data;
@@ -15,7 +15,6 @@ using System.Threading.Tasks;
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
         Task CommitAsync(string package, IPackageChangeset changeset);
-        Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
@@ -31,6 +30,7 @@ namespace PackageRepository.Database.Repositories {
         private static readonly string CreateTarballQuery = GetCreateTarballQuery();
         private static readonly string SelectTarballQuery = GetSelectTarballQuery();
         private static readonly string UpdatePackageVersionQuery = GetUpdatePackageVersionQuery();
+        private static readonly string DeleteDistTagsQuery = $"DELETE FROM { Tables.DistTags } WHERE package = @Package AND tag IN (@Tags)";
 
         private static readonly JsonSerializerSettings DefaultSerializerSettings = new JsonSerializerSettings() {
             NullValueHandling = NullValueHandling.Ignore,
@@ -50,33 +50,48 @@ namespace PackageRepository.Database.Repositories {
             using (var transaction = connection.BeginTransaction()) {
                 var tasks = new List<Task>();
 
-                // Publish
-                if (changeset.Published?.Count > 0) {
-                    tasks.AddRange(changeset.Published.SelectMany(pkg => new Task[] {
-                        connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg), transaction),
-                        connection.ExecuteAsync(CreateTarballQuery, ToEntity(pkg.Tarball), transaction)
-                    }));
+                // Publish versions
+                if (changeset.PublishedVersions?.Count > 0) {
+                    var packages = changeset.PublishedVersions.Select(ToEntity);
+                    var tarballs = changeset.PublishedVersions.Select(pkg => ToEntity(pkg.Tarball));
+
+                    tasks.Add(connection.ExecuteAsync(CreatePackageVersionQuery, packages, transaction));
+                    tasks.Add(connection.ExecuteAsync(CreateTarballQuery, tarballs, transaction));
                 }
 
-                // Update
-                if (changeset.Updated?.Count > 0) {
-                    tasks.AddRange(changeset.Updated.Select(version => {
-                        return connection.ExecuteAsync(UpdatePackageVersionQuery, ToEntity(version), transaction);
-                    }));
+                // Update versions
+                if (changeset.UpdatedVersions?.Count > 0) {
+                    var versions = changeset.UpdatedVersions.Select(ToEntity);
+                    tasks.Add(connection.ExecuteAsync(UpdatePackageVersionQuery, versions, transaction));
                 }
 
-                //  Delete
-                if (changeset.Deleted?.Count > 0) {
-                    tasks.AddRange(changeset.Deleted.Select(id => {
-                        var entity = new PackageVersionEntity() {
-                            Package = id.Name,
-                            Version = id.Version,
-                            Published = false,
-                            Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
-                        };
+                //  Delete versions
+                if (changeset.DeletedVersions?.Count > 0) {
+                    var versions = changeset.DeletedVersions.Select(id => new PackageVersionEntity() {
+                        Package = id.Name,
+                        Version = id.Version,
+                        Published = false,
+                        Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
+                    });
 
-                        return connection.ExecuteAsync(UpdatePackageVersionQuery, entity, transaction);
-                    }));
+                    tasks.Add(connection.ExecuteAsync(UpdatePackageVersionQuery, versions, transaction));
+                }
+
+                // Update/create dist tags
+                if (changeset.UpdatedDistTags?.Count > 0) {
+                    var tags = changeset.UpdatedDistTags.Select(kvp => new DistTagEntity() {
+                        Package = package,
+                        Tag = kvp.Key,
+                        Version = kvp.Value
+                    });
+
+                    tasks.Add(connection.ExecuteAsync(CreateDistTagQuery, tags, transaction));
+                }
+
+                // Delete dist tags
+                if (changeset.DeletedDistTags?.Count > 0) {
+                    var param = new { Package = package, Tags = changeset.DeletedDistTags };
+                    tasks.Add(connection.ExecuteAsync(DeleteDistTagsQuery, param, transaction));
                 }
 
                 try {
@@ -86,17 +101,10 @@ namespace PackageRepository.Database.Repositories {
                 catch(SqliteException ex) {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
-                    throw new PackageException(ErrorCodes.VersionConflict, ex);
+
+                    var identifier = changeset.PublishedVersions?.Count == 1 ? changeset.PublishedVersions[0].Id : null;
+                    throw new DuplicatePackageVersionException(identifier, ex);
                 }
-            }
-        }
-        
-        public async Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
-            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                await Task.WhenAll(distTags.Select(kvp => {
-                    var tag = new DistTagEntity() { Package = package, Tag = kvp.Key, Version = kvp.Value };
-                    return connection.ExecuteAsync(CreateDistTagQuery, tag);
-                }));
             }
         }
 
@@ -137,12 +145,12 @@ namespace PackageRepository.Database.Repositories {
             }
         }
         
-        private Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
+        private static Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT package, version, manifest FROM { Tables.PackageVersions } WHERE { clause } ORDER BY version ASC";
             return connection.QueryAsync<PackageVersionEntity>(query, param, transaction);
         }
 
-        private Task<IEnumerable<DistTagEntity>> GetDistTagsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
+        private static Task<IEnumerable<DistTagEntity>> GetDistTagsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT tag, version FROM { Tables.DistTags } WHERE { clause }";
             return connection.QueryAsync<DistTagEntity>(query, param, transaction);
         }

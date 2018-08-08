@@ -1,20 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace PackageRepository.Models
 {
     public interface IPackageChangeset
     {
-        IList<PackageVersion> Updated { get; }
-        IList<PublishedPackageVersion> Published { get; }
-        IList<PackageIdentifier> Deleted { get; }
+        IList<PackageVersion> UpdatedVersions { get; }
+        IList<PublishedPackageVersion> PublishedVersions { get; }
+        IList<PackageIdentifier> DeletedVersions { get; }
+        IDictionary<string, string> UpdatedDistTags { get; }
+        IList<string> DeletedDistTags { get; }
     }
 
     public class PackageChangeset : IPackageChangeset
     {
-        public IList<PackageVersion> Updated { get; set; }
-        public IList<PublishedPackageVersion> Published { get; set; }
-        public IList<PackageIdentifier> Deleted { get; set; }
+        public IList<PackageVersion> UpdatedVersions { get; set; }
+        public IList<PublishedPackageVersion> PublishedVersions { get; set; }
+        public IList<PackageIdentifier> DeletedVersions { get; set; }
+        public IDictionary<string, string> UpdatedDistTags { get; set; }
+        public IList<string> DeletedDistTags { get; set; }
     }
 }
