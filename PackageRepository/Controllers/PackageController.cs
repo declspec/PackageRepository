@@ -13,7 +13,7 @@ using PackageRepository.Exceptions;
 using PackageRepository.Utils;
 
 namespace PackageRepository.Controllers {
-    [RegexRoute(Patterns.PackageName)]
+    [RegexRoute(Patterns.OrganisationName + "/npm/" + Patterns.PackageName)]
     public class PackageController : ControllerBase {
         private const string TarballRoute = @"-/\k<package>-" + Patterns.SemVer + @"\.tgz";
         private const string RevisionRoute = "-rev/(?<revision>.+)";
