@@ -14,9 +14,7 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
-        Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
-        Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
-        Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions);
+        Task CommitAsync(string package, IPackageChangeset changeset);
         Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
 
         Task<Package> GetPackageAsync(string package);
@@ -47,40 +45,52 @@ namespace PackageRepository.Database.Repositories {
             _connectionProvider = connectionProvider;
         }
 
-        public async Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions) {
+        public async Task CommitAsync(string package, IPackageChangeset changeset) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
-                try {
-                    var tasks = versions.SelectMany(pkg => new Task[] {
+                var tasks = new List<Task>();
+
+                // Publish
+                if (changeset.Published?.Count > 0) {
+                    tasks.AddRange(changeset.Published.SelectMany(pkg => new Task[] {
                         connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg), transaction),
                         connection.ExecuteAsync(CreateTarballQuery, ToEntity(pkg.Tarball), transaction)
-                    });
+                    }));
+                }
 
-                    await Task.WhenAll(tasks).ConfigureAwait(false);
+                // Update
+                if (changeset.Updated?.Count > 0) {
+                    tasks.AddRange(changeset.Updated.Select(version => {
+                        return connection.ExecuteAsync(UpdatePackageVersionQuery, ToEntity(version), transaction);
+                    }));
+                }
+
+                //  Delete
+                if (changeset.Deleted?.Count > 0) {
+                    tasks.AddRange(changeset.Deleted.Select(id => {
+                        var entity = new PackageVersionEntity() {
+                            Package = id.Name,
+                            Version = id.Version,
+                            Published = false,
+                            Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
+                        };
+
+                        return connection.ExecuteAsync(UpdatePackageVersionQuery, entity, transaction);
+                    }));
+                }
+
+                try {
+                    await Task.WhenAll(tasks);
                     transaction.Commit();
                 }
-                catch (SqliteException ex) {
+                catch(SqliteException ex) {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
-                    // Best place for this as any other check (i.e. a pre-emptive SELECT) could potentially race.
                     throw new PackageException(ErrorCodes.VersionConflict, ex);
                 }
             }
         }
-
-        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> packages) {
-            return UpdatePackageVersionsAsync(packages.Select(ToEntity));
-        }
-
-        public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
-            return UpdatePackageVersionsAsync(identifiers.Select(id => new PackageVersionEntity() {
-                Package = id.Name,
-                Version = id.Version,
-                Published = false,
-                Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
-            }));
-        }
-
+        
         public async Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
                 await Task.WhenAll(distTags.Select(kvp => {
@@ -126,15 +136,6 @@ namespace PackageRepository.Database.Repositories {
                 return ToModel(entity);
             }
         }
-
-        private async Task UpdatePackageVersionsAsync(IEnumerable<PackageVersionEntity> entities) {
-            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
-            using (var transaction = connection.BeginTransaction()) {
-                var tasks = entities.Select(pkg => connection.ExecuteAsync(UpdatePackageVersionQuery, pkg, transaction));
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-                transaction.Commit();
-            }
-        }
         
         private Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT package, version, manifest FROM { Tables.PackageVersions } WHERE { clause } ORDER BY version ASC";
@@ -155,7 +156,7 @@ namespace PackageRepository.Database.Repositories {
                 (SELECT CURRENT_TIMESTAMP FROM {Tables.DistTags} WHERE package = @{nameof(DistTagEntity.Package)} AND tag = @{nameof(DistTagEntity.Tag)})
             );";
         }
-        
+
         private static string GetCreatePackageVersionQuery() {
             return $@"INSERT INTO { Tables.PackageVersions } (package, version, manifest) VALUES (
                 @{nameof(PackageVersionEntity.Package)},
@@ -207,7 +208,7 @@ namespace PackageRepository.Database.Repositories {
                 Manifest = JsonConvert.SerializeObject(model.Manifest, DefaultSerializerSettings)
             };
         }
-        
+
         private static TarballEntity ToEntity(Tarball model) {
             return model == null ? null : new TarballEntity() {
                 Package = model.Package.Name,

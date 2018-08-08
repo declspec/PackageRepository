@@ -14,9 +14,8 @@ using PackageRepository.Utils;
 namespace PackageRepository.Controllers {
     [RegexRoute(Patterns.PackageName)]
     public class PackageController : ControllerBase {
-        private static readonly IActionResult BadRequestResponse = new StatusCodeResult((int)HttpStatusCode.BadRequest);
-        private static readonly IActionResult NotFoundResponse = new StatusCodeResult((int)HttpStatusCode.NotFound);
-        private static readonly IActionResult OkResponse = new StatusCodeResult((int)HttpStatusCode.OK);
+        private static readonly IActionResult NotFoundResponse = Error("package not found", HttpStatusCode.NotFound);
+        private static readonly IActionResult BadRequestResponse = Error("invalid request", HttpStatusCode.BadRequest);
 
         private readonly IPackageService _packageService;
 
@@ -30,38 +29,10 @@ namespace PackageRepository.Controllers {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;
 
-            if (vm.Attachments == null) {
-                await _packageService.UpdatePackageVersionsAsync(vm.Name, vm.Versions.Select(kvp => new PackageVersion() {
-                    Id = new PackageIdentifier(vm.Name, kvp.Key),
-                    Manifest = kvp.Value
-                }));
-            }
-            else {
-                // If there are attachments, assume it's a publish action (no support for a simultaneous publish+update as yet)
-                var versions = new List<PublishedPackageVersion>();
-
-                foreach(var kvp in vm.Versions) {
-                    if (!vm.Attachments.TryGetValue(PackageUtils.GetTarballName(vm.Name, kvp.Key), out var attachment))
-                        continue;
-
-                    var identifer = new PackageIdentifier(vm.Name, kvp.Key);
-
-                    versions.Add(new PublishedPackageVersion() {
-                        Id = identifer,
-                        Manifest = kvp.Value,
-                        Tarball = new Tarball() {
-                            Package = identifer,
-                            Data = Convert.FromBase64String(attachment.Data)
-                        }
-                    });
-                }
-
-                // Run sequentially to ensure no errors occurred publishing packages before setting dist-tags
-                await _packageService.PublishPackageVersionsAsync(versions);
-                await _packageService.SetDistTagsAsync(vm.Name, vm.DistTags);
-            }
-
-            return OkResponse;
+            await _packageService.CommitAsync(vm.Name, ToChangeset(vm));
+            await _packageService.SetDistTagsAsync(vm.Name, vm.DistTags);
+            
+            return Ok("updated package");
         }
 
         [HttpGet]
@@ -99,13 +70,17 @@ namespace PackageRepository.Controllers {
             if (overview == null)
                 return NotFoundResponse;
 
-            await _packageService.UnpublishPackageVersionsAsync(overview.Versions.Select(v => v.Id));
-            return Ok("unpublished whole package");
+            var changeset = new PackageChangeset() {
+                Deleted = overview.Versions.Select(v => v.Id).ToList()
+            };
+
+            await _packageService.CommitAsync(overview.Name, changeset);
+            return Ok("removed all package versions");
         }
 
         [HttpPut]
         [RegexRoute("-rev/(?<revision>.+)")]
-        public async Task<IActionResult> UnpublishPackageAsync(string package, string revision, [FromBody]UpdatePackageViewModel vm) {
+        public async Task<IActionResult> UpdatePackageAsync(string package, string revision, [FromBody]UpdatePackageViewModel vm) {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;
 
@@ -114,10 +89,22 @@ namespace PackageRepository.Controllers {
             if (overview == null)
                 return NotFoundResponse;
 
-            var unpublished = overview.Versions.Where(version => !vm.Versions.ContainsKey(version.Id.Version)).ToList();
-            await _packageService.UnpublishPackageVersionsAsync(unpublished.Select(v => v.Id));
+            var changeset = ToChangeset(vm);
 
-            return Ok($"unublished {unpublished.Count} versions");
+            // Allow for deletes when a revision is specified (this is basically a 'replace the model' update)
+            changeset.Deleted = overview.Versions.Select(v => v.Id)
+                .Where(id => !vm.Versions.ContainsKey(id.Version))
+                .ToList();
+
+            await _packageService.CommitAsync(overview.Name, changeset);
+
+            var results = new [] {
+                Tuple.Create(changeset.Published.Count, "published"),
+                Tuple.Create(changeset.Updated.Count, "updated"),
+                Tuple.Create(changeset.Deleted.Count, "unpublished")
+            };
+
+            return Ok(string.Join(", ", results.Where(t => t.Item1 > 0).Select(t => $"{t.Item1} {t.Item2}")));
         }
 
         private static IActionResult Ok(string message) {
@@ -126,6 +113,36 @@ namespace PackageRepository.Controllers {
 
         private static IActionResult Error(string message, HttpStatusCode status) {
             return new JsonResult(new { error = message }) { StatusCode = (int)status };
+        }
+
+        private static PackageChangeset ToChangeset(UpdatePackageViewModel vm) {
+            var changeset = new PackageChangeset() {
+                Updated = new List<PackageVersion>(),
+                Published = new List<PublishedPackageVersion>()
+            };
+
+            foreach (var kvp in vm.Versions) {
+                var id = new PackageIdentifier(vm.Name, kvp.Key);
+
+                if (vm.Attachments == null || !vm.Attachments.TryGetValue(PackageUtils.GetTarballName(id), out var attachment)) {
+                    changeset.Updated.Add(new PackageVersion() {
+                        Id = id,
+                        Manifest = kvp.Value
+                    });
+                }
+                else {
+                    changeset.Published.Add(new PublishedPackageVersion() {
+                        Id = id,
+                        Manifest = kvp.Value,
+                        Tarball = new Tarball() {
+                            Package = id,
+                            Data = Convert.FromBase64String(attachment.Data)
+                        }
+                    });
+                }
+            }
+
+            return changeset;
         }
     }
 }
