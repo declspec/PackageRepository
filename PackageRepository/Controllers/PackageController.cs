@@ -154,21 +154,20 @@ namespace PackageRepository.Controllers {
             foreach (var kvp in vm.Versions) {
                 var id = new PackageIdentifier(vm.Name, kvp.Key);
 
-                if (vm.Attachments == null || !vm.Attachments.TryGetValue(PackageUtils.GetTarballName(id), out var attachment)) {
-                    patch.UpdatedVersions.Add(new PackageVersion() {
-                        Id = id,
-                        Manifest = kvp.Value
-                    });
-                }
+                var version = new PublishedPackageVersion() {
+                    Id = id,
+                    Manifest = kvp.Value
+                };
+
+                if (vm.Attachments == null || !vm.Attachments.TryGetValue(PackageUtils.GetTarballName(id), out var attachment))
+                    patch.UpdatedVersions.Add(version);
                 else {
-                    patch.PublishedVersions.Add(new PublishedPackageVersion() {
-                        Id = id,
-                        Manifest = kvp.Value,
-                        Tarball = new Tarball() {
-                            Package = id,
-                            Data = Convert.FromBase64String(attachment.Data)
-                        }
-                    });
+                    version.Tarball = new Tarball() {
+                        Package = id,
+                        Data = Convert.FromBase64String(attachment.Data)
+                    };
+
+                    patch.PublishedVersions.Add(version);
                 }
             }
 
