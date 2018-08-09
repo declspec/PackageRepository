@@ -2,7 +2,7 @@
 
 namespace PackageRepository.Models
 {
-    public interface IPackageChangeset
+    public interface IPackagePatch
     {
         IList<PackageVersion> UpdatedVersions { get; }
         IList<PublishedPackageVersion> PublishedVersions { get; }
@@ -11,7 +11,7 @@ namespace PackageRepository.Models
         IList<string> DeletedDistTags { get; }
     }
 
-    public class PackageChangeset : IPackageChangeset
+    public class PackagePatch : IPackagePatch
     {
         public IList<PackageVersion> UpdatedVersions { get; set; }
         public IList<PublishedPackageVersion> PublishedVersions { get; set; }

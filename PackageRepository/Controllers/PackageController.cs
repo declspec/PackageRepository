@@ -35,7 +35,7 @@ namespace PackageRepository.Controllers {
                 return BadRequestResponse;
 
             try {
-                await _packageService.CommitAsync(vm.Name, ToChangeset(vm));
+                await _packageService.CommitAsync(vm.Name, ToPatch(vm));
                 return Ok("updated package");
             }
             catch(DuplicatePackageVersionException) {
@@ -88,11 +88,11 @@ namespace PackageRepository.Controllers {
             if (overview == null)
                 return PackageNotFoundResponse;
 
-            var changeset = new PackageChangeset() {
+            var patch = new PackagePatch() {
                 DeletedVersions = overview.Versions.Select(v => v.Id).ToList()
             };
             
-            await _packageService.CommitAsync(overview.Name, changeset);
+            await _packageService.CommitAsync(overview.Name, patch);
             return Ok("removed all package versions");
         }
 
@@ -107,16 +107,16 @@ namespace PackageRepository.Controllers {
             if (overview == null)
                 return PackageNotFoundResponse;
 
-            var changeset = ToChangeset(vm);
+            var patch = ToPatch(vm);
 
             // Allow for deletes when a revision is specified (this is basically a 'replace the model' update)
-            changeset.DeletedVersions = overview.Versions.Select(v => v.Id)
+            patch.DeletedVersions = overview.Versions.Select(v => v.Id)
                 .Where(id => !vm.Versions.ContainsKey(id.Version))
                 .ToList();
 
             try {
-                await _packageService.CommitAsync(overview.Name, changeset);
-                return Ok(GetResults(changeset));
+                await _packageService.CommitAsync(overview.Name, patch);
+                return Ok(GetResults(patch));
             }
             catch(DuplicatePackageVersionException) {
                 return DuplicateVersionResponse;
@@ -134,18 +134,18 @@ namespace PackageRepository.Controllers {
             return new JsonResult(new { error = message }) { StatusCode = (int)status };
         }
 
-        private static string GetResults(IPackageChangeset changeset) {
+        private static string GetResults(IPackagePatch patch) {
             var results = new[] {
-                Tuple.Create(changeset.PublishedVersions.Count, "published"),
-                Tuple.Create(changeset.UpdatedVersions.Count, "updated"),
-                Tuple.Create(changeset.DeletedVersions.Count, "unpublished")
+                Tuple.Create(patch.PublishedVersions.Count, "published"),
+                Tuple.Create(patch.UpdatedVersions.Count, "updated"),
+                Tuple.Create(patch.DeletedVersions.Count, "unpublished")
             };
 
             return string.Join(", ", results.Where(t => t.Item1 > 0).Select(t => $"{t.Item1} {t.Item2}"));
         }
 
-        private static PackageChangeset ToChangeset(UpdatePackageViewModel vm) {
-            var changeset = new PackageChangeset() {
+        private static PackagePatch ToPatch(UpdatePackageViewModel vm) {
+            var patch = new PackagePatch() {
                 UpdatedVersions = new List<PackageVersion>(),
                 PublishedVersions = new List<PublishedPackageVersion>(),
                 UpdatedDistTags = vm.DistTags
@@ -155,13 +155,13 @@ namespace PackageRepository.Controllers {
                 var id = new PackageIdentifier(vm.Name, kvp.Key);
 
                 if (vm.Attachments == null || !vm.Attachments.TryGetValue(PackageUtils.GetTarballName(id), out var attachment)) {
-                    changeset.UpdatedVersions.Add(new PackageVersion() {
+                    patch.UpdatedVersions.Add(new PackageVersion() {
                         Id = id,
                         Manifest = kvp.Value
                     });
                 }
                 else {
-                    changeset.PublishedVersions.Add(new PublishedPackageVersion() {
+                    patch.PublishedVersions.Add(new PublishedPackageVersion() {
                         Id = id,
                         Manifest = kvp.Value,
                         Tarball = new Tarball() {
@@ -172,7 +172,7 @@ namespace PackageRepository.Controllers {
                 }
             }
 
-            return changeset;
+            return patch;
         }
     }
 }

@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
-        Task CommitAsync(string package, IPackageChangeset changeset);
+        Task CommitAsync(string package, IPackagePatch patch);
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
@@ -45,29 +45,29 @@ namespace PackageRepository.Database.Repositories {
             _connectionProvider = connectionProvider;
         }
 
-        public async Task CommitAsync(string package, IPackageChangeset changeset) {
+        public async Task CommitAsync(string package, IPackagePatch patch) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
                 var tasks = new List<Task>();
 
                 // Publish versions
-                if (changeset.PublishedVersions?.Count > 0) {
-                    var packages = changeset.PublishedVersions.Select(ToEntity);
-                    var tarballs = changeset.PublishedVersions.Select(pkg => ToEntity(pkg.Tarball));
+                if (patch.PublishedVersions?.Count > 0) {
+                    var packages = patch.PublishedVersions.Select(ToEntity);
+                    var tarballs = patch.PublishedVersions.Select(pkg => ToEntity(pkg.Tarball));
 
                     tasks.Add(connection.ExecuteAsync(CreatePackageVersionQuery, packages, transaction));
                     tasks.Add(connection.ExecuteAsync(CreateTarballQuery, tarballs, transaction));
                 }
 
                 // Update versions
-                if (changeset.UpdatedVersions?.Count > 0) {
-                    var versions = changeset.UpdatedVersions.Select(ToEntity);
+                if (patch.UpdatedVersions?.Count > 0) {
+                    var versions = patch.UpdatedVersions.Select(ToEntity);
                     tasks.Add(connection.ExecuteAsync(UpdatePackageVersionQuery, versions, transaction));
                 }
 
                 //  Delete versions
-                if (changeset.DeletedVersions?.Count > 0) {
-                    var versions = changeset.DeletedVersions.Select(id => new PackageVersionEntity() {
+                if (patch.DeletedVersions?.Count > 0) {
+                    var versions = patch.DeletedVersions.Select(id => new PackageVersionEntity() {
                         Package = id.Name,
                         Version = id.Version,
                         Published = false,
@@ -78,8 +78,8 @@ namespace PackageRepository.Database.Repositories {
                 }
 
                 // Update/create dist tags
-                if (changeset.UpdatedDistTags?.Count > 0) {
-                    var tags = changeset.UpdatedDistTags.Select(kvp => new DistTagEntity() {
+                if (patch.UpdatedDistTags?.Count > 0) {
+                    var tags = patch.UpdatedDistTags.Select(kvp => new DistTagEntity() {
                         Package = package,
                         Tag = kvp.Key,
                         Version = kvp.Value
@@ -89,8 +89,8 @@ namespace PackageRepository.Database.Repositories {
                 }
 
                 // Delete dist tags
-                if (changeset.DeletedDistTags?.Count > 0) {
-                    var param = new { Package = package, Tags = changeset.DeletedDistTags };
+                if (patch.DeletedDistTags?.Count > 0) {
+                    var param = new { Package = package, Tags = patch.DeletedDistTags };
                     tasks.Add(connection.ExecuteAsync(DeleteDistTagsQuery, param, transaction));
                 }
 
@@ -102,7 +102,7 @@ namespace PackageRepository.Database.Repositories {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
 
-                    var identifier = changeset.PublishedVersions?.Count == 1 ? changeset.PublishedVersions[0].Id : null;
+                    var identifier = patch.PublishedVersions?.Count == 1 ? patch.PublishedVersions[0].Id : null;
                     throw new DuplicatePackageVersionException(identifier, ex);
                 }
             }

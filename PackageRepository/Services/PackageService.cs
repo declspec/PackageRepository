@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Services {
     public interface IPackageService {
-        Task CommitAsync(string package, IPackageChangeset changeset);
+        Task CommitAsync(string package, IPackagePatch patch);
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
@@ -19,10 +19,10 @@ namespace PackageRepository.Services {
             _repository = repository;
         }
 
-        public Task CommitAsync(string package, IPackageChangeset changeset) {
-            return changeset.UpdatedVersions == null || changeset.UpdatedVersions.Count == 0
-                ? _repository.CommitAsync(package, changeset)
-                : UpdateAndCommitAsync(package, changeset);
+        public Task CommitAsync(string package, IPackagePatch patch) {
+            return patch.UpdatedVersions == null || patch.UpdatedVersions.Count == 0
+                ? _repository.CommitAsync(package, patch)
+                : UpdateAndCommitAsync(package, patch);
         }
 
         public Task<Package> GetPackageAsync(string package) {
@@ -33,20 +33,20 @@ namespace PackageRepository.Services {
             return _repository.GetTarballAsync(identifier);
         }
 
-        private async Task UpdateAndCommitAsync(string package, IPackageChangeset changeset) {
+        private async Task UpdateAndCommitAsync(string package, IPackagePatch patch) {
             var overview = await _repository.GetPackageAsync(package).ConfigureAwait(false);
 
             if (overview == null)
                 throw new PackageNotFoundException(package);
 
-            var updatedChangeset = new PackageChangeset() {
-                PublishedVersions = changeset.PublishedVersions,
-                DeletedVersions = changeset.DeletedVersions,
-                UpdatedDistTags = changeset.UpdatedDistTags,
-                DeletedDistTags = changeset.DeletedDistTags,
+            var updatedPatch = new PackagePatch() {
+                PublishedVersions = patch.PublishedVersions,
+                DeletedVersions = patch.DeletedVersions,
+                UpdatedDistTags = patch.UpdatedDistTags,
+                DeletedDistTags = patch.DeletedDistTags,
 
-                // Ensure that we're only updating allowed fields on the Manifest by cloning the changeset and inverting the updates
-                UpdatedVersions = changeset.UpdatedVersions.Select(version => {
+                // Ensure that we're only updating allowed fields on the Manifest by cloning the patch and inverting the updates
+                UpdatedVersions = patch.UpdatedVersions.Select(version => {
                     var matching = overview.Versions.SingleOrDefault(v => v.Id == version.Id)
                         ?? throw new PackageVersionNotFoundException(version.Id);
 
@@ -56,7 +56,7 @@ namespace PackageRepository.Services {
                 }).ToList()
             };
 
-            await _repository.CommitAsync(package, updatedChangeset).ConfigureAwait(false);
+            await _repository.CommitAsync(package, updatedPatch).ConfigureAwait(false);
         }
     }
 }
