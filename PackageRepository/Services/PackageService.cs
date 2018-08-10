@@ -1,17 +1,12 @@
-﻿using PackageRepository.Constants;
-using PackageRepository.Database.Repositories;
-using PackageRepository.Errors;
+﻿using PackageRepository.Database.Repositories;
+using PackageRepository.Exceptions;
 using PackageRepository.Models;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace PackageRepository.Services {
     public interface IPackageService {
-        Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
-        Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
-        Task UpdatePackageVersionsAsync(string package, IEnumerable<PackageVersion> versions);
-        Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
+        Task CommitAsync(string package, IPackagePatch patch);
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
@@ -24,33 +19,10 @@ namespace PackageRepository.Services {
             _repository = repository;
         }
 
-        public Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions) {
-            return _repository.PublishPackageVersionsAsync(versions);
-        }
-
-        public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
-            return _repository.UnpublishPackageVersionsAsync(identifiers);
-        }
-
-        public async Task UpdatePackageVersionsAsync(string package, IEnumerable<PackageVersion> versions) {
-            var overview = await _repository.GetPackageAsync(package).ConfigureAwait(false);
-
-            if (overview == null)
-                throw new PackageException(ErrorCodes.PackageNotFound);
-
-            await _repository.UpdatePackageVersionsAsync(versions.Select(version => {
-                var matching = overview.Versions.SingleOrDefault(v => v.Id == version.Id)
-                    ?? throw new PackageException(ErrorCodes.VersionNotFound);
-
-                // Only update specific fields
-                matching.Manifest.Deprecated = version.Manifest.Deprecated;
-
-                return matching;
-            }));
-        }
-
-        public Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
-            return _repository.SetDistTagsAsync(package, distTags);
+        public Task CommitAsync(string package, IPackagePatch patch) {
+            return patch.UpdatedVersions == null || patch.UpdatedVersions.Count == 0
+                ? _repository.CommitAsync(package, patch)
+                : UpdateAndCommitAsync(package, patch);
         }
 
         public Task<Package> GetPackageAsync(string package) {
@@ -59,6 +31,32 @@ namespace PackageRepository.Services {
 
         public Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
             return _repository.GetTarballAsync(identifier);
+        }
+
+        private async Task UpdateAndCommitAsync(string package, IPackagePatch patch) {
+            var overview = await _repository.GetPackageAsync(package).ConfigureAwait(false);
+
+            if (overview == null)
+                throw new PackageNotFoundException(package);
+
+            var updatedPatch = new PackagePatch() {
+                PublishedVersions = patch.PublishedVersions,
+                DeletedVersions = patch.DeletedVersions,
+                UpdatedDistTags = patch.UpdatedDistTags,
+                DeletedDistTags = patch.DeletedDistTags,
+
+                // Ensure that we're only updating allowed fields on the Manifest by cloning the patch and inverting the updates
+                UpdatedVersions = patch.UpdatedVersions.Select(version => {
+                    var matching = overview.Versions.SingleOrDefault(v => v.Id == version.Id)
+                        ?? throw new PackageVersionNotFoundException(version.Id);
+
+                    // Treat empty strings as equivalent to null
+                    matching.Manifest.Deprecated = string.IsNullOrEmpty(version.Manifest.Deprecated) ? null : version.Manifest.Deprecated;
+                    return matching;
+                }).ToList()
+            };
+
+            await _repository.CommitAsync(package, updatedPatch).ConfigureAwait(false);
         }
     }
 }

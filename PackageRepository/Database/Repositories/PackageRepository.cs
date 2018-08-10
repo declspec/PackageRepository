@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using PackageRepository.Constants;
 using PackageRepository.Database.Entities;
-using PackageRepository.Errors;
+using PackageRepository.Exceptions;
 using PackageRepository.Models;
 using System.Collections.Generic;
 using System.Data;
@@ -14,10 +14,7 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IPackageRepository {
-        Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions);
-        Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers);
-        Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> versions);
-        Task SetDistTagsAsync(string package, IDictionary<string, string> distTags);
+        Task CommitAsync(string package, IPackagePatch patch);
 
         Task<Package> GetPackageAsync(string package);
         Task<Tarball> GetTarballAsync(PackageIdentifier identifier);
@@ -33,6 +30,7 @@ namespace PackageRepository.Database.Repositories {
         private static readonly string CreateTarballQuery = GetCreateTarballQuery();
         private static readonly string SelectTarballQuery = GetSelectTarballQuery();
         private static readonly string UpdatePackageVersionQuery = GetUpdatePackageVersionQuery();
+        private static readonly string DeleteDistTagsQuery = GetDeleteDistTagsQuery();
 
         private static readonly JsonSerializerSettings DefaultSerializerSettings = new JsonSerializerSettings() {
             NullValueHandling = NullValueHandling.Ignore,
@@ -47,46 +45,71 @@ namespace PackageRepository.Database.Repositories {
             _connectionProvider = connectionProvider;
         }
 
-        public async Task PublishPackageVersionsAsync(IEnumerable<PublishedPackageVersion> versions) {
+        public async Task CommitAsync(string package, IPackagePatch patch) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
-                try {
-                    var tasks = versions.SelectMany(pkg => new Task[] {
-                        connection.ExecuteAsync(CreatePackageVersionQuery, ToEntity(pkg), transaction),
-                        connection.ExecuteAsync(CreateTarballQuery, ToEntity(pkg.Tarball), transaction)
+                var tasks = new List<Task>();
+
+                // Publish versions
+                if (patch.PublishedVersions?.Count > 0) {
+                    var packages = new List<PackageVersionEntity>();
+                    var tarballs = new List<TarballEntity>();
+
+                    foreach (var version in patch.PublishedVersions) {
+                        packages.Add(ToEntity(version));
+                        tarballs.Add(ToEntity(version.Tarball));
+                    }
+
+                    tasks.Add(connection.ExecuteAsync(CreatePackageVersionQuery, packages, transaction));
+                    tasks.Add(connection.ExecuteAsync(CreateTarballQuery, tarballs, transaction));
+                }
+
+                // Update versions
+                if (patch.UpdatedVersions?.Count > 0) {
+                    var versions = patch.UpdatedVersions.Select(ToEntity);
+                    tasks.Add(connection.ExecuteAsync(UpdatePackageVersionQuery, versions, transaction));
+                }
+
+                //  Delete versions
+                if (patch.DeletedVersions?.Count > 0) {
+                    var versions = patch.DeletedVersions.Select(id => new PackageVersionEntity() {
+                        Package = id.Name,
+                        Version = id.Version,
+                        Published = false,
+                        Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
                     });
 
+                    tasks.Add(connection.ExecuteAsync(UpdatePackageVersionQuery, versions, transaction));
+                }
+
+                // Update/create dist tags
+                if (patch.UpdatedDistTags?.Count > 0) {
+                    var tags = patch.UpdatedDistTags.Select(kvp => new DistTagEntity() {
+                        Package = package,
+                        Tag = kvp.Key,
+                        Version = kvp.Value
+                    });
+
+                    tasks.Add(connection.ExecuteAsync(CreateDistTagQuery, tags, transaction));
+                }
+
+                // Delete dist tags
+                if (patch.DeletedDistTags?.Count > 0) {
+                    var param = new { Package = package, Tags = patch.DeletedDistTags };
+                    tasks.Add(connection.ExecuteAsync(DeleteDistTagsQuery, param, transaction));
+                }
+
+                try {
                     await Task.WhenAll(tasks).ConfigureAwait(false);
                     transaction.Commit();
                 }
                 catch (SqliteException ex) {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
-                    // Best place for this as any other check (i.e. a pre-emptive SELECT) could potentially race.
-                    throw new PackageException(ErrorCodes.VersionConflict, ex);
+
+                    var identifier = patch.PublishedVersions?.Count == 1 ? patch.PublishedVersions[0].Id : null;
+                    throw new DuplicatePackageVersionException(identifier, ex);
                 }
-            }
-        }
-
-        public Task UpdatePackageVersionsAsync(IEnumerable<PackageVersion> packages) {
-            return UpdatePackageVersionsAsync(packages.Select(ToEntity));
-        }
-
-        public Task UnpublishPackageVersionsAsync(IEnumerable<PackageIdentifier> identifiers) {
-            return UpdatePackageVersionsAsync(identifiers.Select(id => new PackageVersionEntity() {
-                Package = id.Name,
-                Version = id.Version,
-                Published = false,
-                Manifest = null // This is COALESCED in the UPDATE so it won't actually clobber the manifest
-            }));
-        }
-
-        public async Task SetDistTagsAsync(string package, IDictionary<string, string> distTags) {
-            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                await Task.WhenAll(distTags.Select(kvp => {
-                    var tag = new DistTagEntity() { Package = package, Tag = kvp.Key, Version = kvp.Value };
-                    return connection.ExecuteAsync(CreateDistTagQuery, tag);
-                }));
             }
         }
 
@@ -115,33 +138,24 @@ namespace PackageRepository.Database.Repositories {
 
         public async Task<PackageVersion> GetPackageVersionAsync(PackageIdentifier identifier) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                var versions = await GetVersionsWhere("package = @Name AND version = @Version AND published = 1", identifier, connection);
+                var versions = await GetVersionsWhere("package = @Name AND version = @Version AND published = 1", identifier, connection).ConfigureAwait(false);
                 return ToModel(versions.SingleOrDefault());
             }
         }
 
         public async Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                var entity = await connection.QuerySingleAsync<TarballEntity>(SelectTarballQuery, identifier);
+                var entity = await connection.QuerySingleAsync<TarballEntity>(SelectTarballQuery, identifier).ConfigureAwait(false);
                 return ToModel(entity);
             }
         }
 
-        private async Task UpdatePackageVersionsAsync(IEnumerable<PackageVersionEntity> entities) {
-            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
-            using (var transaction = connection.BeginTransaction()) {
-                var tasks = entities.Select(pkg => connection.ExecuteAsync(UpdatePackageVersionQuery, pkg, transaction));
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-                transaction.Commit();
-            }
-        }
-        
-        private Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
+        private static Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT package, version, manifest FROM { Tables.PackageVersions } WHERE { clause } ORDER BY version ASC";
             return connection.QueryAsync<PackageVersionEntity>(query, param, transaction);
         }
 
-        private Task<IEnumerable<DistTagEntity>> GetDistTagsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
+        private static Task<IEnumerable<DistTagEntity>> GetDistTagsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT tag, version FROM { Tables.DistTags } WHERE { clause }";
             return connection.QueryAsync<DistTagEntity>(query, param, transaction);
         }
@@ -155,7 +169,7 @@ namespace PackageRepository.Database.Repositories {
                 (SELECT CURRENT_TIMESTAMP FROM {Tables.DistTags} WHERE package = @{nameof(DistTagEntity.Package)} AND tag = @{nameof(DistTagEntity.Tag)})
             );";
         }
-        
+
         private static string GetCreatePackageVersionQuery() {
             return $@"INSERT INTO { Tables.PackageVersions } (package, version, manifest) VALUES (
                 @{nameof(PackageVersionEntity.Package)},
@@ -185,6 +199,10 @@ namespace PackageRepository.Database.Repositories {
                 WHERE package = @{nameof(PackageIdentifier.Name)} AND version = @{nameof(PackageIdentifier.Version)}";
         }
 
+        private static string GetDeleteDistTagsQuery() {
+            return $"DELETE FROM { Tables.DistTags } WHERE package = @Package AND tag IN (@Tags)";
+        }
+
         private static PackageVersion ToModel(PackageVersionEntity entity) {
             return entity == null ? null : new PackageVersion() {
                 Id = new PackageIdentifier(entity.Package, entity.Version),
@@ -207,7 +225,7 @@ namespace PackageRepository.Database.Repositories {
                 Manifest = JsonConvert.SerializeObject(model.Manifest, DefaultSerializerSettings)
             };
         }
-        
+
         private static TarballEntity ToEntity(Tarball model) {
             return model == null ? null : new TarballEntity() {
                 Package = model.Package.Name,

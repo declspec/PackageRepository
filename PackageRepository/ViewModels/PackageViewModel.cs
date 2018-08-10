@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Newtonsoft.Json;
@@ -6,10 +7,19 @@ using PackageRepository.Models;
 
 namespace PackageRepository.ViewModels {
     public class PackageViewModel : IValidatableObject {
+        [JsonProperty(PropertyName = "_id")]
+        public string Id => Name;
+        [JsonProperty(PropertyName = "_rev")]
+        public string Revision { get; set; }
+
         public string Name { get; set; }
         [JsonProperty(PropertyName = "dist-tags")]
         public IDictionary<string, string> DistTags { get; set; }
         public IDictionary<string, Manifest> Versions { get; set; }
+
+        public PackageViewModel() {
+            Revision = Guid.NewGuid().ToString();
+        }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) {
             return InternalValidate(validationContext);

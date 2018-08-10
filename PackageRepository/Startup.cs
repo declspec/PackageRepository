@@ -59,7 +59,7 @@ namespace PackageRepository {
             });
 
             app.Use((context, next) => {
-                var result = context.Response.NotFound(context.Request.Path);
+                var result = context.Response.Error(System.Net.HttpStatusCode.ServiceUnavailable, context.Request.Path);
                 return result.ExecuteResultAsync(CreateActionContext(context));
             });
         }

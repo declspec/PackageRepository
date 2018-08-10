@@ -19,6 +19,6 @@ namespace PackageRepository.Database.Migrations {
 
         public void Down(IDbConnection connection) {
             connection.Execute($"DROP TABLE { Tables.PackageTarballs };");
-        }        
+        }
     }
 }
