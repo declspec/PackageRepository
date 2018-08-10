@@ -38,7 +38,7 @@ namespace PackageRepository.Controllers {
                 await _packageService.CommitAsync(vm.Name, ToPatch(vm));
                 return Ok("updated package");
             }
-            catch(DuplicatePackageVersionException) {
+            catch (DuplicatePackageVersionException) {
                 return DuplicateVersionResponse;
             }
             catch (PackageVersionNotFoundException nfe) {
@@ -91,7 +91,7 @@ namespace PackageRepository.Controllers {
             var patch = new PackagePatch() {
                 DeletedVersions = overview.Versions.Select(v => v.Id).ToList()
             };
-            
+
             await _packageService.CommitAsync(overview.Name, patch);
             return Ok("removed all package versions");
         }
@@ -118,10 +118,10 @@ namespace PackageRepository.Controllers {
                 await _packageService.CommitAsync(overview.Name, patch);
                 return Ok(GetResults(patch));
             }
-            catch(DuplicatePackageVersionException) {
+            catch (DuplicatePackageVersionException) {
                 return DuplicateVersionResponse;
             }
-            catch(PackageVersionNotFoundException nfe) {
+            catch (PackageVersionNotFoundException nfe) {
                 return Error($"package version not found ({nfe.Identifier.Version})", HttpStatusCode.BadRequest);
             }
         }

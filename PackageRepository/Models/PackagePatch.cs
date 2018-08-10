@@ -1,9 +1,7 @@
 ﻿using System.Collections.Generic;
 
-namespace PackageRepository.Models
-{
-    public interface IPackagePatch
-    {
+namespace PackageRepository.Models {
+    public interface IPackagePatch {
         IList<PackageVersion> UpdatedVersions { get; }
         IList<PublishedPackageVersion> PublishedVersions { get; }
         IList<PackageIdentifier> DeletedVersions { get; }
@@ -11,8 +9,7 @@ namespace PackageRepository.Models
         IList<string> DeletedDistTags { get; }
     }
 
-    public class PackagePatch : IPackagePatch
-    {
+    public class PackagePatch : IPackagePatch {
         public IList<PackageVersion> UpdatedVersions { get; set; }
         public IList<PublishedPackageVersion> PublishedVersions { get; set; }
         public IList<PackageIdentifier> DeletedVersions { get; set; }

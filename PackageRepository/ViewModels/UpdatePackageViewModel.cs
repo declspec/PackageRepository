@@ -24,8 +24,7 @@ namespace PackageRepository.ViewModels {
             return results;
         }
 
-        private bool ValidateAttachments()
-        {
+        private bool ValidateAttachments() {
             return Attachments.Count == Versions.Count
                 && Attachments.All(kvp => Versions.Any(v => PackageUtils.GetTarballName(Name, v.Key) == kvp.Key) && IsValidBase64String(kvp.Value.Data));
         }
@@ -35,10 +34,10 @@ namespace PackageRepository.ViewModels {
                 return false;
 
             var pos = str.Length - 1;
-            if (str[pos] == '=') 
+            if (str[pos] == '=')
                 pos -= (str[pos - 1] == '=' ? 2 : 1);
 
-            for(; pos >= 0; --pos) {
+            for (; pos >= 0; --pos) {
                 if (!IsValidBase64Char(str[pos]))
                     return false;
             }

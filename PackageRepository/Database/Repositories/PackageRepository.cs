@@ -30,7 +30,7 @@ namespace PackageRepository.Database.Repositories {
         private static readonly string CreateTarballQuery = GetCreateTarballQuery();
         private static readonly string SelectTarballQuery = GetSelectTarballQuery();
         private static readonly string UpdatePackageVersionQuery = GetUpdatePackageVersionQuery();
-        private static readonly string DeleteDistTagsQuery = $"DELETE FROM { Tables.DistTags } WHERE package = @Package AND tag IN (@Tags)";
+        private static readonly string DeleteDistTagsQuery = GetDeleteDistTagsQuery();
 
         private static readonly JsonSerializerSettings DefaultSerializerSettings = new JsonSerializerSettings() {
             NullValueHandling = NullValueHandling.Ignore,
@@ -52,8 +52,13 @@ namespace PackageRepository.Database.Repositories {
 
                 // Publish versions
                 if (patch.PublishedVersions?.Count > 0) {
-                    var packages = patch.PublishedVersions.Select(ToEntity);
-                    var tarballs = patch.PublishedVersions.Select(pkg => ToEntity(pkg.Tarball));
+                    var packages = new List<PackageVersionEntity>();
+                    var tarballs = new List<TarballEntity>();
+
+                    foreach (var version in patch.PublishedVersions) {
+                        packages.Add(ToEntity(version));
+                        tarballs.Add(ToEntity(version.Tarball));
+                    }
 
                     tasks.Add(connection.ExecuteAsync(CreatePackageVersionQuery, packages, transaction));
                     tasks.Add(connection.ExecuteAsync(CreateTarballQuery, tarballs, transaction));
@@ -95,10 +100,10 @@ namespace PackageRepository.Database.Repositories {
                 }
 
                 try {
-                    await Task.WhenAll(tasks);
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                     transaction.Commit();
                 }
-                catch(SqliteException ex) {
+                catch (SqliteException ex) {
                     if (ex.SqliteErrorCode != ErrorSqliteConstraint || ex.SqliteExtendedErrorCode != ErrorSqliteConstraintUnique)
                         throw;
 
@@ -133,18 +138,18 @@ namespace PackageRepository.Database.Repositories {
 
         public async Task<PackageVersion> GetPackageVersionAsync(PackageIdentifier identifier) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                var versions = await GetVersionsWhere("package = @Name AND version = @Version AND published = 1", identifier, connection);
+                var versions = await GetVersionsWhere("package = @Name AND version = @Version AND published = 1", identifier, connection).ConfigureAwait(false);
                 return ToModel(versions.SingleOrDefault());
             }
         }
 
         public async Task<Tarball> GetTarballAsync(PackageIdentifier identifier) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                var entity = await connection.QuerySingleAsync<TarballEntity>(SelectTarballQuery, identifier);
+                var entity = await connection.QuerySingleAsync<TarballEntity>(SelectTarballQuery, identifier).ConfigureAwait(false);
                 return ToModel(entity);
             }
         }
-        
+
         private static Task<IEnumerable<PackageVersionEntity>> GetVersionsWhere(string clause, object param, IDbConnection connection, IDbTransaction transaction = null) {
             var query = $"SELECT package, version, manifest FROM { Tables.PackageVersions } WHERE { clause } ORDER BY version ASC";
             return connection.QueryAsync<PackageVersionEntity>(query, param, transaction);
@@ -192,6 +197,10 @@ namespace PackageRepository.Database.Repositories {
         private static string GetSelectTarballQuery() {
             return $@"SELECT package, version, data FROM { Tables.PackageTarballs } 
                 WHERE package = @{nameof(PackageIdentifier.Name)} AND version = @{nameof(PackageIdentifier.Version)}";
+        }
+
+        private static string GetDeleteDistTagsQuery() {
+            return $"DELETE FROM { Tables.DistTags } WHERE package = @Package AND tag IN (@Tags)";
         }
 
         private static PackageVersion ToModel(PackageVersionEntity entity) {

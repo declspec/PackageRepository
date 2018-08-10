@@ -8,8 +8,8 @@ namespace PackageRepository.Utils {
         }
 
         public static string GetTarballName(PackageIdentifier identifier) {
-            return identifier != null 
-                ? GetTarballName(identifier.Name, identifier.Version) 
+            return identifier != null
+                ? GetTarballName(identifier.Name, identifier.Version)
                 : throw new ArgumentNullException(nameof(identifier));
         }
 
