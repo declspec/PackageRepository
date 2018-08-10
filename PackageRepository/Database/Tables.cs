@@ -10,7 +10,7 @@
         public const string OrganisationTeamMembers = "organisation_team_members";
 
         public const string Objects = "objects";
-        public const string ObjectOrganisationPermissions = "object_org_permissions";
+        public const string ObjectOrganisationPermissions = "object_organisation_permissions";
         public const string ObjectTeamPermissions = "object_team_permissions";
         public const string ObjectUserPermissions = "object_user_permissions";
     }

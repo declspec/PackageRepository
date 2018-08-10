@@ -11,6 +11,7 @@ using System.Net;
 using System.Threading.Tasks;
 using PackageRepository.Exceptions;
 using PackageRepository.Utils;
+using PackageRepository.Database.Repositories;
 
 namespace PackageRepository.Controllers {
     [RegexRoute(Patterns.OrganisationName + "/npm/" + Patterns.PackageName)]
@@ -23,9 +24,18 @@ namespace PackageRepository.Controllers {
         private static readonly IActionResult DuplicateVersionResponse = Error("cannot overwrite existing package version", HttpStatusCode.NotAcceptable);
 
         private readonly IPackageService _packageService;
+        private readonly IPermissionRepository _permissionRepository;
 
-        public PackageController(IPackageService packageService) {
+        public PackageController(IPackageService packageService, IPermissionRepository permissionRepository) {
             _packageService = packageService;
+            _permissionRepository = permissionRepository;
+        }
+
+        [HttpGet]
+        [RegexRoute("permissions")]
+        public async Task<IActionResult> GetPackagePermissions(string organisation, string package) {
+            var permissions = await _permissionRepository.GetObjectPermissionsAsync(new ObjectIdentifier(1, Enums.ObjectType.NpmPackage, PackageUtils.UnescapeName(package)));
+            return new JsonResult(permissions);
         }
 
         [HttpPut]

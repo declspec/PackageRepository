@@ -9,7 +9,7 @@ namespace PackageRepository.Database.Migrations {
             connection.Execute($@"CREATE TABLE { Tables.Objects } (
                 id              INTEGER NOT NULL PRIMARY KEY,
                 organisation_id INTEGER NOT NULL REFERENCES { Tables.Organisations } (id) ON DELETE CASCADE,
-                type            TEXT NOT NULL,
+                type            INTEGER NOT NULL,
                 name            TEXT NOT NULL,
 
                 date_created    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -38,12 +38,17 @@ namespace PackageRepository.Database.Migrations {
 
             connection.Execute($@"CREATE TABLE { Tables.ObjectUserPermissions } (
                 object_id       INTEGER NOT NULL REFERENCES { Tables.Objects } (id) ON DELETE CASCADE,
-                team_id INTEGER NOT NULL REFERENCES { Tables.OrganisationUsers } (id) ON DELETE CASCADE,
+                user_id         INTEGER NOT NULL REFERENCES { Tables.OrganisationUsers } (id) ON DELETE CASCADE,
                 permissions     INTEGER NOT NULL,
 
                 date_created    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 date_modified   TIMESTAMP
             );");
+
+            connection.Execute($"CREATE INDEX idx_object_organisation_permissions ON { Tables.ObjectOrganisationPermissions } (object_id, organisation_id);");
+            connection.Execute($"CREATE INDEX idx_object_team_permissions ON { Tables.ObjectTeamPermissions } (object_id, team_id);");
+            connection.Execute($"CREATE INDEX idx_object_user_permissions ON { Tables.ObjectUserPermissions } (object_id, user_id);");
+            connection.Execute($"CREATE INDEX idx_object_org_type ON { Tables.Objects } (organisation_id, type);");
         }
 
         public void Down(IDbConnection connection) {
