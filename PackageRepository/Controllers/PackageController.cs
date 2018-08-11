@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 using PackageRepository.Exceptions;
 using PackageRepository.Utils;
 using PackageRepository.Database.Repositories;
+using PackageRepository.Filters;
+using PackageRepository.Enums;
 
 namespace PackageRepository.Controllers {
     [RegexRoute(Patterns.OrganisationName + "/npm/" + Patterns.PackageName)]
@@ -35,17 +37,19 @@ namespace PackageRepository.Controllers {
         [RegexRoute("permissions")]
         public async Task<IActionResult> GetPackagePermissions(string organisation, string package) {
             var identifier = new ThingIdentifier(organisation, Enums.ThingType.NpmPackage, PackageUtils.UnescapeName(package));
+            var context = new UserContext(1, 1, new long[] { });
             var thing = await _thingRepository.GetThingAsync(identifier);
 
             if (thing == null)
                 return PackageNotFoundResponse;
 
-            var permissions = await _thingRepository.GetThingPermissionsAsync(thing.Id);
+            var permissions = await _thingRepository.GetThingPermissionsForUserAsync(thing.Id, context);
             return new JsonResult(permissions);
         }
 
         [HttpPut]
         [RegexRoute("")]
+        [NpmPackageAccess("organisation", "package", Permissions.Create | Permissions.Update)]
         public async Task<IActionResult> UpdatePackage(string package, [FromBody] UpdatePackageViewModel vm) {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;
@@ -64,6 +68,7 @@ namespace PackageRepository.Controllers {
 
         [HttpGet]
         [RegexRoute("")]
+        [NpmPackageAccess("organisation", "package", Permissions.Read)]
         public async Task<IActionResult> GetPackage(string package) {
             var overview = await _packageService.GetPackageAsync(PackageUtils.UnescapeName(package));
 
@@ -79,6 +84,7 @@ namespace PackageRepository.Controllers {
 
         [HttpGet]
         [RegexRoute(TarballRoute)]
+        [NpmPackageAccess("organisation", "package", Permissions.Read)]
         public async Task<IActionResult> GetTarball(string package, string version) {
             var identifier = new PackageIdentifier(package, version);
             var tarball = await _packageService.GetTarballAsync(identifier);
@@ -91,6 +97,7 @@ namespace PackageRepository.Controllers {
 
         [HttpDelete]
         [RegexRoute(TarballRoute + "/" + RevisionRoute)]
+        [NpmPackageAccess("organisation", "package", Permissions.Delete)]
         public IActionResult DeleteTarball() {
             // no-op here as we don't want to actually delete the data.
             return Ok("removed tarball");
@@ -98,6 +105,7 @@ namespace PackageRepository.Controllers {
 
         [HttpDelete]
         [RegexRoute(RevisionRoute)]
+        [NpmPackageAccess("organisation", "package", Permissions.Create | Permissions.Update | Permissions.Delete)]
         public async Task<IActionResult> UnpublishPackageAsync(string package, string revision) {
             var overview = await _packageService.GetPackageAsync(PackageUtils.UnescapeName(package));
 
@@ -114,6 +122,7 @@ namespace PackageRepository.Controllers {
 
         [HttpPut]
         [RegexRoute(RevisionRoute)]
+        [NpmPackageAccess("organisation", "package", Permissions.Create | Permissions.Update | Permissions.Delete)]
         public async Task<IActionResult> UpdatePackageAsync(string package, string revision, [FromBody]UpdatePackageViewModel vm) {
             if (!ModelState.IsValid || PackageUtils.UnescapeName(package) != vm.Name)
                 return BadRequestResponse;

@@ -1,16 +1,14 @@
 ﻿using Dapper;
 using Fiksu.Database;
-using PackageRepository.Database.Entities;
 using PackageRepository.Enums;
 using PackageRepository.Models;
-using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface IThingRepository {
         Task<Thing> GetThingAsync(ThingIdentifier identifier);
-        Task<ThingPermissions> GetThingPermissionsAsync(long thingId);
+        Task<Permissions> GetThingPermissionsForUserAsync(long thingId, UserContext user);
     }
 
     public class ThingRepository : IThingRepository {
@@ -33,34 +31,12 @@ namespace PackageRepository.Database.Repositories {
             }
         }
 
-        public async Task<ThingPermissions> GetThingPermissionsAsync(long thingId) {
+        public async Task<Permissions> GetThingPermissionsForUserAsync(long thingId, UserContext user) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
-                var param = new { ThingId = thingId };
-                var entities = await connection.QueryAsync<ThingPermissionEntity>(SelectThingPermissionsQuery, param).ConfigureAwait(false);
+                var param = new { ThingId = thingId, user.Teams, user.OrganisationId, user.UserId };
+                var permissions = await connection.QueryAsync<Permissions>(SelectThingPermissionsQuery, param).ConfigureAwait(false);
 
-                var permissions = new ThingPermissions() {
-                    Organisations = new Dictionary<long, Permissions>(),
-                    Teams = new Dictionary<long, Permissions>(),
-                    Users = new Dictionary<long, Permissions>()
-                };
-
-                foreach (var entity in entities) {
-                    switch (entity.PermissionType) {
-                        case PermissionTypeOrganisation:
-                            permissions.Organisations.Add(entity.Id, entity.Permissions);
-                            break;
-                        case PermissionTypeTeam:
-                            permissions.Teams.Add(entity.Id, entity.Permissions);
-                            break;
-                        case PermissionTypeUser:
-                            permissions.Users.Add(entity.Id, entity.Permissions);
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unexpected {nameof(ThingPermissionEntity.PermissionType)} encountered: {entity.PermissionType}");
-                    }
-                }
-
-                return permissions;
+                return permissions.Aggregate(Permissions.None, (total, p) => total | p); 
             }
         }
 
@@ -73,19 +49,22 @@ namespace PackageRepository.Database.Repositories {
         }
 
         private static string GetSelectThingPermissionsQuery() {
-            return $@"SELECT * FROM (
-                SELECT '{ PermissionTypeOrganisation }' AS permission_type, oop.organisation_id AS id, oop.permissions, oop.thing_id
+            return $@"SELECT permissions FROM (
+                SELECT oop.thing_id, oop.permissions
                 FROM { Tables.ThingOrganisationPermissions } oop
+                WHERE oop.organisation_id = @{nameof(UserContext.OrganisationId)}
 
-                UNION ALL
+                UNION
 
-                SELECT '{ PermissionTypeTeam }' AS permission_type, otp.team_id AS id, otp.permissions, otp.thing_id
+                SELECT otp.thing_id, otp.permissions
                 FROM { Tables.ThingTeamPermissions } otp
+                WHERE otp.team_id IN (@{nameof(UserContext.Teams)})
 
-                UNION ALL
+                UNION
 
-                SELECT '{ PermissionTypeUser }' AS permission_type, oup.user_id AS id, oup.permissions, oup.thing_id
+                SELECT oup.thing_id, oup.permissions
                 FROM { Tables.ThingUserPermissions } oup
+                WHERE oup.user_id = @{nameof(UserContext.UserId)}
             )
             WHERE thing_id = @ThingId";
         }

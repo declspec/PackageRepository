@@ -26,7 +26,6 @@ namespace PackageRepository.Config {
 
             // Add repos
             services.AddSingleton<IPackageRepository, Database.Repositories.PackageRepository>();
-            services.AddSingleton<IPermissionRepository, PermissionRepository>();
             services.AddSingleton<IThingRepository, ThingRepository>();
             //services.AddSingleton<ITarballRepository, TarballRepository>();
         }

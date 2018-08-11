@@ -13,11 +13,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
+using PackageRepository.Auth;
 using PackageRepository.Config;
 using PackageRepository.Services;
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Security.Claims;
 
 namespace PackageRepository {
     public class Startup {
@@ -42,7 +44,6 @@ namespace PackageRepository {
             });
 
             services.AddSingleton<IPackageService, PackageService>();
-            services.AddSingleton<IAuthorizationService, AuthorizationService>();
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env) {
@@ -51,6 +52,15 @@ namespace PackageRepository {
 
             app.Use((context, next) => {
                 context.Features.Set<IHttpContext>(new FiksuCoreHttpContext(context));
+
+                // Temp fake auth
+                var identity = new ClaimsIdentity("testauth");
+                identity.AddClaim(new Claim(CustomClaimTypes.OrganisationId, "1"));
+                identity.AddClaim(new Claim(CustomClaimTypes.Teams, "1"));
+                identity.AddClaim(new Claim(identity.NameClaimType, "1"));
+
+                context.User = new ClaimsPrincipal(identity);
+            
                 return next.Invoke();
             });
 
