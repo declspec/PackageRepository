@@ -72,7 +72,7 @@ namespace PackageRepository.Database.Repositories {
                     SELECT '{ PermissionTypeUser }' AS permission_type, oup.user_id AS id, oup.permissions, oup.thing_id
                     FROM { Tables.ThingUserPermissions } oup
                 ) op ON op.thing_id = o.id
-                WHERE o.organisation_id = @{nameof(ThingIdentifier.OrganisationId)}
+                WHERE o.organisation_id = @{nameof(ThingIdentifier.Organisation)}
                 AND o.name = @{nameof(ThingIdentifier.Name)}
                 AND o.type = @{nameof(ThingIdentifier.Type)}
             ";

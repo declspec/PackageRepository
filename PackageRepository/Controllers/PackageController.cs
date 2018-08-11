@@ -24,17 +24,23 @@ namespace PackageRepository.Controllers {
         private static readonly IActionResult DuplicateVersionResponse = Error("cannot overwrite existing package version", HttpStatusCode.NotAcceptable);
 
         private readonly IPackageService _packageService;
-        private readonly IPermissionRepository _permissionRepository;
+        private readonly IThingRepository _thingRepository;
 
-        public PackageController(IPackageService packageService, IPermissionRepository permissionRepository) {
+        public PackageController(IPackageService packageService, IThingRepository thingRepository) {
             _packageService = packageService;
-            _permissionRepository = permissionRepository;
+            _thingRepository = thingRepository;
         }
 
         [HttpGet]
         [RegexRoute("permissions")]
         public async Task<IActionResult> GetPackagePermissions(string organisation, string package) {
-            var permissions = await _permissionRepository.GetThingPermissionsAsync(new ThingIdentifier(1, Enums.ThingType.NpmPackage, PackageUtils.UnescapeName(package)));
+            var identifier = new ThingIdentifier(organisation, Enums.ThingType.NpmPackage, PackageUtils.UnescapeName(package));
+            var thing = await _thingRepository.GetThingAsync(identifier);
+
+            if (thing == null)
+                return PackageNotFoundResponse;
+
+            var permissions = await _thingRepository.GetThingPermissionsAsync(thing.Id);
             return new JsonResult(permissions);
         }
 

@@ -2,12 +2,12 @@
 
 namespace PackageRepository.Models {
     public class ThingIdentifier {
-        public long OrganisationId { get; }
+        public string Organisation { get; }
         public ThingType Type { get; }
         public string Name { get; }
 
-        public ThingIdentifier(long organistionId, ThingType type, string name) {
-            OrganisationId = organistionId;
+        public ThingIdentifier(string organistion, ThingType type, string name) {
+            Organisation = organistion;
             Type = type;
             Name = name;
         }
@@ -15,7 +15,7 @@ namespace PackageRepository.Models {
         public override int GetHashCode() {
             var hash = 17;
 
-            hash = hash * 23 + OrganisationId.GetHashCode();
+            hash = hash * 23 + Organisation.GetHashCode();
             hash = hash * 23 + Type.GetHashCode();
             hash = hash * 23 + Name.GetHashCode();
 
@@ -24,7 +24,7 @@ namespace PackageRepository.Models {
 
         public override bool Equals(object obj) {
             return obj is ThingIdentifier id
-                && id.OrganisationId == OrganisationId
+                && id.Organisation == Organisation
                 && id.Type == Type
                 && id.Name == Name;
         }
