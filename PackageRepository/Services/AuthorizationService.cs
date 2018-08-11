@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Services {
     public interface IAuthorizationService {
-        Task<bool> IsAuthorizedAsync(UserContext context, ObjectIdentifier objectId, Permissions requiredPermissions);
+        Task<bool> IsAuthorizedAsync(UserContext context, ThingIdentifier thingId, Permissions requiredPermissions);
     }
 
     public class AuthorizationService : IAuthorizationService {
@@ -15,18 +15,18 @@ namespace PackageRepository.Services {
             _permissionRepository = permissionRepository;
         }
 
-        public async Task<bool> IsAuthorizedAsync(UserContext context, ObjectIdentifier objectId, Permissions requiredPermissions) {
-            var objectPermissions = await _permissionRepository.GetObjectPermissionsAsync(objectId).ConfigureAwait(false);
+        public async Task<bool> IsAuthorizedAsync(UserContext context, ThingIdentifier thingId, Permissions requiredPermissions) {
+            var thingPermissions = await _permissionRepository.GetThingPermissionsAsync(thingId).ConfigureAwait(false);
             var userPermissions = Permissions.None;
 
-            if (objectPermissions.Users.TryGetValue(context.UserId, out var up))
+            if (thingPermissions.Users.TryGetValue(context.UserId, out var up))
                 userPermissions |= up;
 
-            if (objectPermissions.Organisations.TryGetValue(context.OrganisationId, out var op))
+            if (thingPermissions.Organisations.TryGetValue(context.OrganisationId, out var op))
                 userPermissions |= op;
 
             foreach (var team in context.Teams) {
-                if (objectPermissions.Teams.TryGetValue(team, out var tp))
+                if (thingPermissions.Teams.TryGetValue(team, out var tp))
                     userPermissions |= tp;
             }
 

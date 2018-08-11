@@ -34,7 +34,7 @@ namespace PackageRepository.Controllers {
         [HttpGet]
         [RegexRoute("permissions")]
         public async Task<IActionResult> GetPackagePermissions(string organisation, string package) {
-            var permissions = await _permissionRepository.GetObjectPermissionsAsync(new ObjectIdentifier(1, Enums.ObjectType.NpmPackage, PackageUtils.UnescapeName(package)));
+            var permissions = await _permissionRepository.GetThingPermissionsAsync(new ThingIdentifier(1, Enums.ThingType.NpmPackage, PackageUtils.UnescapeName(package)));
             return new JsonResult(permissions);
         }
 

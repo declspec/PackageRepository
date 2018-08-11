@@ -1,5 +1,5 @@
 ﻿namespace PackageRepository.Enums {
-    public enum ObjectType {
+    public enum ThingType {
         NpmPackage = 1
     }
 }

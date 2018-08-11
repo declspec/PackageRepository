@@ -1,12 +1,12 @@
 ﻿using PackageRepository.Enums;
 
 namespace PackageRepository.Models {
-    public class ObjectIdentifier {
+    public class ThingIdentifier {
         public long OrganisationId { get; }
-        public ObjectType Type { get; }
+        public ThingType Type { get; }
         public string Name { get; }
 
-        public ObjectIdentifier(long organistionId, ObjectType type, string name) {
+        public ThingIdentifier(long organistionId, ThingType type, string name) {
             OrganisationId = organistionId;
             Type = type;
             Name = name;
@@ -23,19 +23,19 @@ namespace PackageRepository.Models {
         }
 
         public override bool Equals(object obj) {
-            return obj is ObjectIdentifier id
+            return obj is ThingIdentifier id
                 && id.OrganisationId == OrganisationId
                 && id.Type == Type
                 && id.Name == Name;
         }
 
-        public static bool operator ==(ObjectIdentifier id1, ObjectIdentifier id2) {
+        public static bool operator ==(ThingIdentifier id1, ThingIdentifier id2) {
             return ReferenceEquals(id1, null)
                 ? ReferenceEquals(id2, null)
                 : id1.Equals(id2);
         }
 
-        public static bool operator !=(ObjectIdentifier id1, ObjectIdentifier id2) {
+        public static bool operator !=(ThingIdentifier id1, ThingIdentifier id2) {
             return !(id1 == id2);
         }
     }
