@@ -30,9 +30,9 @@ namespace PackageRepository.Database.Repositories {
                 var entities = await connection.QueryAsync<ObjectPermissionEntity>(SelectObjectPermissionsQuery, identifier).ConfigureAwait(false);
 
                 var permissions = new ObjectPermissions() {
-                    Organisations = new Dictionary<int, Permission>(),
-                    Teams = new Dictionary<int, Permission>(),
-                    Users = new Dictionary<int, Permission>()
+                    Organisations = new Dictionary<long, Permissions>(),
+                    Teams = new Dictionary<long, Permissions>(),
+                    Users = new Dictionary<long, Permissions>()
                 };
 
                 foreach(var entity in entities) {

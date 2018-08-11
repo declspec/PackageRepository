@@ -42,6 +42,7 @@ namespace PackageRepository {
             });
 
             services.AddSingleton<IPackageService, PackageService>();
+            services.AddSingleton<IAuthorizationService, AuthorizationService>();
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env) {

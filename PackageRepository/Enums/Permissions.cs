@@ -2,7 +2,7 @@
 
 namespace PackageRepository.Enums {
     [Flags]
-    public enum Permission {
+    public enum Permissions {
         None = 0,
         Create = 0x001,
         Read = 0x0002,

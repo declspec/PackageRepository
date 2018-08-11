@@ -2,8 +2,8 @@
 
 namespace PackageRepository.Database.Entities {
     public class ObjectPermissionEntity {
-        public int Id { get; set; }
+        public long Id { get; set; }
         public string PermissionType { get; set; }
-        public Permission Permissions { get; set; }
+        public Permissions Permissions { get; set; }
     }
 }
