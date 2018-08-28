@@ -10,6 +10,8 @@ namespace PackageRepository.Models {
     }
 
     public class PackagePatch : IPackagePatch {
+        public string Organisation { get; set; }
+        public string Name { get; set; }
         public IList<PackageVersion> UpdatedVersions { get; set; }
         public IList<PublishedPackageVersion> PublishedVersions { get; set; }
         public IList<PackageIdentifier> DeletedVersions { get; set; }

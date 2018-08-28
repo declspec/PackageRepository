@@ -13,5 +13,8 @@
         public const string ThingOrganisationPermissions = "thing_organisation_permissions";
         public const string ThingTeamPermissions = "thing_team_permissions";
         public const string ThingUserPermissions = "thing_user_permissions";
+
+        public const string NpmPackages = "npm_package";
+        public const string NpmTarballs = "npm_tarballs";
     }
 }
