@@ -7,7 +7,7 @@ namespace PackageRepository.Utils {
             return $"{package}-{version}.tgz";
         }
 
-        public static string GetTarballName(PackageIdentifier identifier) {
+        public static string GetTarballName(NpmPackageVersionIdentifier identifier) {
             return identifier != null
                 ? GetTarballName(identifier.Name, identifier.Version)
                 : throw new ArgumentNullException(nameof(identifier));

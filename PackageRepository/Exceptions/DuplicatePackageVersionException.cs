@@ -3,15 +3,18 @@ using System;
 
 namespace PackageRepository.Exceptions {
     public class DuplicatePackageVersionException : Exception {
-        public PackageIdentifier Identifier { get; }
+        public NpmPackageVersionIdentifier Identifier { get; }
 
-        public DuplicatePackageVersionException(PackageIdentifier identifier, string message)
+        public DuplicatePackageVersionException(NpmPackageVersionIdentifier identifier)
+            : this(identifier, "Duplicate package version found") { }
+
+        public DuplicatePackageVersionException(NpmPackageVersionIdentifier identifier, string message)
             : this(identifier, message, null) { }
 
-        public DuplicatePackageVersionException(PackageIdentifier identifier, Exception innerException)
+        public DuplicatePackageVersionException(NpmPackageVersionIdentifier identifier, Exception innerException)
             : this(identifier, null, innerException) { }
 
-        public DuplicatePackageVersionException(PackageIdentifier identifier, string message, Exception innerException) : base(message, innerException) {
+        public DuplicatePackageVersionException(NpmPackageVersionIdentifier identifier, string message, Exception innerException) : base(message, innerException) {
             Identifier = identifier;
         }
     }

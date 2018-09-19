@@ -15,7 +15,6 @@ using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using PackageRepository.Auth;
 using PackageRepository.Config;
-using PackageRepository.Services;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -42,8 +41,6 @@ namespace PackageRepository {
                 settings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
                 settings.Converters.Add(new StringEnumConverter());
             });
-
-            services.AddSingleton<IPackageService, PackageService>();
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env) {

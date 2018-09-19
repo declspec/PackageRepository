@@ -9,8 +9,10 @@ namespace PackageRepository.Config {
     public static class DatabaseConfiguration {
         // Create an extension method for the IServiceCollection
         public static void AddDatabase(this IServiceCollection services, string connectionString) {
-            var currentAssembly = typeof(Startup).GetTypeInfo().Assembly;
             var provider = new SqliteConnectionProvider(connectionString);
+            var assemblies = new[] {
+                type
+            };
 
             // Dapper config
             DefaultTypeMap.MatchNamesWithUnderscores = true;
@@ -25,9 +27,9 @@ namespace PackageRepository.Config {
             services.AddSingleton<IDbConnectionProvider>(provider);
 
             // Add repos
-            services.AddSingleton<IPackageRepository, Database.Repositories.PackageRepository>();
             services.AddSingleton<IThingRepository, ThingRepository>();
-            //services.AddSingleton<ITarballRepository, TarballRepository>();
+            services.AddSingleton<INpmPackageRepository, NpmPackageRepository>();
+            services.AddSingleton<INpmTarballRepository, NpmTarballRepository>();
         }
     }
 }

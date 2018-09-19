@@ -2,11 +2,11 @@
 using Dapper;
 using Fiksu.Database;
 
-namespace PackageRepository.Database.Migrations {
+namespace GetPkg.Npm.Sqlite.Migrations {
     [Migration(201808180021)]
-    public class CreateNpmPackageTables : IMigration {
+    public class CreatePackageTables : IMigration {
         public void Up(IDbConnection connection) {
-            connection.Execute($@"CREATE TABLE { Tables.NpmPackages } (
+            connection.Execute($@"CREATE TABLE { Tables.Packages } (
                 organisation    TEXT NOT NULL,
                 name            TEXT NOT NULL,
                 revision        TEXT NOT NULL,
@@ -18,7 +18,7 @@ namespace PackageRepository.Database.Migrations {
                 CONSTRAINT unq_npm_package_name UNIQUE(organisation, name)
             );");
 
-            connection.Execute($@"CREATE TABLE { Tables.NpmTarballs } (
+            connection.Execute($@"CREATE TABLE { Tables.Tarballs } (
                 organisation    TEXT NOT NULL,
                 package         TEXT NOT NULL,
                 version         TEXT NOT NULL,
@@ -31,8 +31,8 @@ namespace PackageRepository.Database.Migrations {
         }
 
         public void Down(IDbConnection connection) {
-            connection.Execute($"DROP TABLE {Tables.NpmTarballs};");
-            connection.Execute($"DROP TABLE {Tables.NpmPackages};");
+            connection.Execute($"DROP TABLE {Tables.Tarballs};");
+            connection.Execute($"DROP TABLE {Tables.Packages};");
         }
     }
 }

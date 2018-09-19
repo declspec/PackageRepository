@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 
-namespace PackageRepository.Models {
-    public class NpmPackage {
+namespace GetPkg.Npm {
+    public class Package {
         public string Organisation { get; set; }
         public string Name { get; set; }
         public string Revision { get; set; }

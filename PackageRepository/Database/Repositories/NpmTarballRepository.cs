@@ -8,11 +8,13 @@ using System.Threading.Tasks;
 
 namespace PackageRepository.Database.Repositories {
     public interface INpmTarballRepository {
+        Task<NpmTarball> GetAsync(NpmPackageVersionIdentifier identifier);
         Task SaveAsync(IEnumerable<NpmTarball> tarballs);
-        Task DeleteAsync(NpmPackageIdentifier package, IEnumerable<string> versions);
+        Task DeleteAsync(IEnumerable<NpmPackageVersionIdentifier> identifiers);
     }
 
     public class NpmTarballRepository : INpmTarballRepository {
+        private static readonly string SelectTarballQuery = GetSelectTarballQuery();
         private static readonly string InsertTarballQuery = GetInsertTarballQuery();
         private static readonly string DeleteTarballQuery = GetDeleteTarballQuery();
 
@@ -20,6 +22,13 @@ namespace PackageRepository.Database.Repositories {
 
         public NpmTarballRepository(IDbConnectionProvider connectionProvider) {
             _connectionProvider = connectionProvider;
+        }
+
+        public async Task<NpmTarball> GetAsync(NpmPackageVersionIdentifier identifier) {
+            using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false)) {
+                var entity = await connection.QuerySingleOrDefaultAsync<NpmTarballEntity>(SelectTarballQuery, identifier).ConfigureAwait(false);
+                return ToModel(entity, identifier);
+            }
         }
 
         public async Task SaveAsync(IEnumerable<NpmTarball> tarballs) {
@@ -31,32 +40,33 @@ namespace PackageRepository.Database.Repositories {
             }
         }
 
-        public async Task DeleteAsync(NpmPackageIdentifier package, IEnumerable<string> versions) {
+        public async Task DeleteAsync(IEnumerable<NpmPackageVersionIdentifier> identifiers) {
             using (var connection = await _connectionProvider.GetConnectionAsync().ConfigureAwait(false))
             using (var transaction = connection.BeginTransaction()) {
-                var entities = versions.Select(vers => new NpmTarballEntity() {
-                    Organisation = package.Organisation,
-                    Package = package.Name,
-                    Version = vers
-                });
-
-                await connection.ExecuteAsync(DeleteTarballQuery, entities.ToList(), transaction).ConfigureAwait(false);
+                await connection.ExecuteAsync(DeleteTarballQuery, identifiers, transaction).ConfigureAwait(false);
                 transaction.Commit();
             }
         }
 
         private static NpmTarballEntity ToEntity(NpmTarball model) {
             return model == null ? null : new NpmTarballEntity() {
-                Organisation = model.Package.Organisation,
-                Package = model.Package.Name,
-                Version = model.Version,
+                Organisation = model.Version.Organisation,
+                Package = model.Version.Name,
+                Version = model.Version.Version,
                 Data = model.Data
+            };
+        }
+
+        private static NpmTarball ToModel(NpmTarballEntity entity, NpmPackageVersionIdentifier identifier = null) {
+            return entity == null ? null : new NpmTarball() {
+                Data = entity.Data,
+                Version = identifier ?? new NpmPackageVersionIdentifier(entity.Organisation, entity.Package, entity.Version),
             };
         }
 
         private static string GetInsertTarballQuery() {
             return $@"INSERT INTO { Tables.NpmTarballs } (organisation, package, version, data) VALUES (
-                @{nameof(NpmTarballEntity.Organisation)}
+                @{nameof(NpmTarballEntity.Organisation)},
                 @{nameof(NpmTarballEntity.Package)},
                 @{nameof(NpmTarballEntity.Version)},
                 @{nameof(NpmTarballEntity.Data)}
@@ -65,9 +75,16 @@ namespace PackageRepository.Database.Repositories {
 
         private static string GetDeleteTarballQuery() {
             return $@"DELETE FROM { Tables.NpmTarballs }
-                WHERE organisation = @{nameof(NpmTarballEntity.Organisation)}
-                AND package = @{nameof(NpmTarballEntity.Package)}
-                AND version = @{nameof(NpmTarballEntity.Version)}";
+                WHERE organisation = @{nameof(NpmPackageVersionIdentifier.Organisation)}
+                AND package = @{nameof(NpmPackageVersionIdentifier.Name)}
+                AND version = @{nameof(NpmPackageVersionIdentifier.Version)}";
+        }
+
+        private static string GetSelectTarballQuery() {
+            return $@"SELECT organisation, package, version, data FROM { Tables.NpmTarballs }
+                WHERE organisation = @{nameof(NpmPackageVersionIdentifier.Organisation)}
+                AND package = @{nameof(NpmPackageVersionIdentifier.Name)}
+                AND version = @{nameof(NpmPackageVersionIdentifier.Version)}";
         }
     }
 }
