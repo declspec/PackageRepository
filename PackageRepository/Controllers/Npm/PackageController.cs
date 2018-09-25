@@ -1,20 +1,21 @@
-﻿using FiksuCore.Web.Routing;
-using GetPkg.Npm.Http.ViewModels;
-using Microsoft.AspNetCore.Mvc;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using FiksuCore.Web.Routing;
+using GetPkg.Npm;
+using Microsoft.AspNetCore.Mvc;
+using PackageRepository.Constants;
+using PackageRepository.ViewModels.Npm;
 
-namespace GetPkg.Npm.Http.Controllers {
-    [RegexRoute(RoutePatterns.OrganisationName + "/npm/" + RoutePatterns.PackageName)]
-    public class PackageController : ControllerBase {
-        private const string TarballRoute = @"-/\k<package>-" + RoutePatterns.SemVer + @"\.tgz";
+namespace PackageRepository.Controllers.Npm {
+    [RegexRoute(Patterns.OrganisationName + "/npm/" + Patterns.PackageName)]
+    public class PackageController : NpmControllerBase {
+        private const string TarballRoute = @"-/\k<package>-" + Patterns.SemVer + @"\.tgz";
         private const string RevisionRoute = "-rev/(?<revision>.+)";
 
         private static readonly IActionResult PackageNotFoundResponse = Error("package not found", HttpStatusCode.NotFound);
-        private static readonly IActionResult BadRequestResponse = Error("invalid request", HttpStatusCode.BadRequest);
         private static readonly IActionResult DuplicateVersionResponse = Error("cannot overwrite existing package version", HttpStatusCode.NotAcceptable);
 
         private readonly INpmPackageRepository _packageRepository;
@@ -112,7 +113,6 @@ namespace GetPkg.Npm.Http.Controllers {
             return await UpdatePackageAsync(existing, vm, true);
         }
 
-
         private async Task<IActionResult> UpdatePackageAsync(Package package, UpdatePackageViewModel updates, bool deleteMissingVersions) {
             var tarballs = new List<Tarball>();
 
@@ -167,14 +167,6 @@ namespace GetPkg.Npm.Http.Controllers {
 
                 throw;
             }
-        }
-
-        private static IActionResult Ok(string message) {
-            return new JsonResult(new { ok = message });
-        }
-
-        private static IActionResult Error(string message, HttpStatusCode status) {
-            return new JsonResult(new { error = message }) { StatusCode = (int)status };
         }
 
         private static string CleanPackageName(string name) {

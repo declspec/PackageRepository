@@ -2,12 +2,25 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using PackageRepository.Utils;
 
-namespace PackageRepository.ViewModels {
+namespace PackageRepository.ViewModels.Npm {
     public class UpdatePackageViewModel : PackageViewModel {
         [JsonProperty(PropertyName = "_attachments")]
         public IDictionary<string, AttachmentViewModel> Attachments { get; set; }
+
+        public bool TryGetAttachment(string version, out AttachmentViewModel attachment) {
+            var name = GetTarballName(version);
+
+            if (Attachments != null && Attachments.TryGetValue(name, out attachment))
+                return true;
+
+            attachment = null;
+            return false;
+        }
+
+        protected virtual string GetTarballName(string version) {
+            return $"{Name}-{version}.tgz";
+        }
 
         protected override IList<ValidationResult> InternalValidate(ValidationContext validationContext) {
             var results = base.InternalValidate(validationContext);
@@ -25,7 +38,7 @@ namespace PackageRepository.ViewModels {
 
         private bool ValidateAttachments() {
             return Attachments.Count == Versions.Count
-                && Attachments.All(kvp => Versions.Any(v => PackageUtils.GetTarballName(Name, v.Key) == kvp.Key) && IsValidBase64String(kvp.Value.Data));
+                && Attachments.All(kvp => Versions.Any(v => GetTarballName(v.Key) == kvp.Key) && IsValidBase64String(kvp.Value.Data));
         }
 
         private static bool IsValidBase64String(string str) {

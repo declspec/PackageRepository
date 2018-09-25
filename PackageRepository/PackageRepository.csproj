@@ -54,4 +54,10 @@
   <ItemGroup>
     <Folder Include="Services\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GetPkg.Npm.Sqlite\GetPkg.Npm.Sqlite.csproj" />
+    <ProjectReference Include="..\GetPkg.Npm\GetPkg.Npm.csproj" />
+    <ProjectReference Include="..\GetPkg\GetPkg.csproj" />
+  </ItemGroup>
 </Project>

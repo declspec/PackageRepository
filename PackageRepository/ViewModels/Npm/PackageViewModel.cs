@@ -1,9 +1,10 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using GetPkg.Npm;
 using Newtonsoft.Json;
 
-namespace GetPkg.Npm.Http.ViewModels {
+namespace PackageRepository.ViewModels.Npm {
     public class PackageViewModel : IValidatableObject {
         [JsonProperty(PropertyName = "_id")]
         public string Id => Name;
