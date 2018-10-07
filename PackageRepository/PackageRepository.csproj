@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.1.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="2.1.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="2.1.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
     <PackageReference Include="Newtonsoft.Json.Bson" Version="1.0.1" />
   </ItemGroup>
 
@@ -56,6 +57,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\GetPkg.Auth\GetPkg.Auth.csproj" />
     <ProjectReference Include="..\GetPkg.Npm.Sqlite\GetPkg.Npm.Sqlite.csproj" />
     <ProjectReference Include="..\GetPkg.Npm\GetPkg.Npm.csproj" />
     <ProjectReference Include="..\GetPkg\GetPkg.csproj" />

@@ -14,9 +14,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GetPkg.Npm", "GetPkg.Npm\Ge
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GetPkg.Npm.Sqlite", "GetPkg.Npm.Sqlite\GetPkg.Npm.Sqlite.csproj", "{3B9656C0-39FD-4A0A-ACD0-4AE3AB0ADA2A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GetPkg", "GetPkg\GetPkg.csproj", "{209C7A0C-4244-4903-ADE7-F1F39536FE68}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GetPkg", "GetPkg\GetPkg.csproj", "{209C7A0C-4244-4903-ADE7-F1F39536FE68}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GetPkg.Sqlite", "GetPkg.Sqlite\GetPkg.Sqlite.csproj", "{D0317BF2-EF43-47AB-A779-C59F5BD0DB97}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GetPkg.Sqlite", "GetPkg.Sqlite\GetPkg.Sqlite.csproj", "{D0317BF2-EF43-47AB-A779-C59F5BD0DB97}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GetPkg.Auth", "GetPkg.Auth\GetPkg.Auth.csproj", "{A468A6AA-08AE-448C-8721-A67BCE0D94A0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +46,10 @@ Global
 		{D0317BF2-EF43-47AB-A779-C59F5BD0DB97}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D0317BF2-EF43-47AB-A779-C59F5BD0DB97}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D0317BF2-EF43-47AB-A779-C59F5BD0DB97}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A468A6AA-08AE-448C-8721-A67BCE0D94A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A468A6AA-08AE-448C-8721-A67BCE0D94A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A468A6AA-08AE-448C-8721-A67BCE0D94A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A468A6AA-08AE-448C-8721-A67BCE0D94A0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Fiksu.Web;
 using FiksuCore.Web.Routing;
 using GetPkg;
+using GetPkg.Auth;
+using GetPkg.Auth.OAuth2;
 using Microsoft.AspNetCore.Mvc;
 using PackageRepository.Constants;
 using PackageRepository.ViewModels.Npm;
@@ -9,6 +12,21 @@ using PackageRepository.ViewModels.Npm;
 namespace PackageRepository.Controllers.Npm {
     [RegexRoute(Patterns.OrganisationName + "/npm/-/user")]
     public class UserController : NpmControllerBase {
+        private static readonly OAuth2Configuration GitHubConfiguration = new OAuth2Configuration() {
+            AuthorizationEndpoint = new Uri("https://github.curtin.edu.au/login/oauth/authorize"),
+            TokenEndpoint = new Uri("https://github.curtin.edu.au/login/oauth/access_token"),
+            ClientId = "cec4accd758f6c85a888",
+            ClientSecret = "795516cf170e9bb0ccbe4a0243bdac5cde5a3dc4",
+            Scopes = new[] { "public_repo", "read:org", "user:email" }
+        };
+
+        private static readonly SsoRequestOptions StaticRequestOptions = new SsoRequestOptions() {
+            State = "dumb.state",
+            RedirectUri = new Uri("http://localhost:5000/authorize")
+        };
+
+        private static readonly ISsoAuthenticationProvider SsoProvider = new OAuth2AuthenticationProvider(GitHubConfiguration, new System.Net.Http.HttpClient());
+
         //private readonly ITokenRepository _tokenRepository;
 
         //public UserController(ITokenRepository tokenRepository) {
@@ -19,8 +37,9 @@ namespace PackageRepository.Controllers.Npm {
         [RegexRoute(@"org\.couchdb\.user:npm_(?:oauth|saml)_auth_dummy_user")]
         public async Task<IActionResult> SsoLogin(string organisation) {
             var token = await Task.FromResult(new Token() { Id = Guid.NewGuid().ToString() });
-            var ssoUrl = $"https://github.curtin.edu.au/login/oauth/authorize?client_id=cec4accd758f6c85a888&client_secret=795516cf170e9bb0ccbe4a0243bdac5cde5a3dc4&state={token.Id}&redirect_uri=http://localhost:5000/authorize&scope=public_repo%20read:org%20user:email";
-            return new JsonResult(new { token = token.Id, sso = ssoUrl }) { StatusCode = 201 };
+            var redirectUri = await SsoProvider.GetAuthorizationUriAsync(StaticRequestOptions);
+
+            return new JsonResult(new { token = token.Id, sso = redirectUri }) { StatusCode = 201 };
         }
 
         [HttpPut]
@@ -33,7 +52,8 @@ namespace PackageRepository.Controllers.Npm {
         }
 
         [HttpGet("authorize")]
-        public IActionResult Authorize() {
+        public async Task<IActionResult> Authenticate() {
+            var principal = await SsoProvider.AuthenticateAsync(HttpContext.Features.Get<IHttpContext>().Request, StaticRequestOptions);
             return Ok(new { token = "" });
         }
     }

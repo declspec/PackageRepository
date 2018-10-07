@@ -49,6 +49,11 @@ namespace PackageRepository {
 
             app.Use((context, next) => {
                 context.Features.Set<IHttpContext>(new FiksuCoreHttpContext(context));
+                return next.Invoke();
+            });
+
+            app.Use((context, next) => {
+                context.Features.Set<IHttpContext>(new FiksuCoreHttpContext(context));
 
                 // Temp fake auth
                 var identity = new ClaimsIdentity("testauth");

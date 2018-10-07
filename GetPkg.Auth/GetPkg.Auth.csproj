@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Fiksu.Web">
+      <HintPath>..\..\Fiksu\Fiksu.Web\bin\Debug\netstandard2.0\Fiksu.Web.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
