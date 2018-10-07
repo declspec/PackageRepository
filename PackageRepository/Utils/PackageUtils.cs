@@ -1,5 +1,5 @@
 ﻿using System;
-using PackageRepository.Models;
+using GetPkg.Npm;
 
 namespace PackageRepository.Utils {
     public static class PackageUtils {
@@ -7,7 +7,7 @@ namespace PackageRepository.Utils {
             return $"{package}-{version}.tgz";
         }
 
-        public static string GetTarballName(NpmPackageVersionIdentifier identifier) {
+        public static string GetTarballName(PackageVersionIdentifier identifier) {
             return identifier != null
                 ? GetTarballName(identifier.Name, identifier.Version)
                 : throw new ArgumentNullException(nameof(identifier));
