@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
-using Fiksu.Web;
 using FiksuCore.Web.Routing;
 using GetPkg;
 using GetPkg.Auth;
@@ -12,15 +12,21 @@ using PackageRepository.ViewModels.Npm;
 namespace PackageRepository.Controllers.Npm {
     [RegexRoute(Patterns.OrganisationName + "/npm/-/user")]
     public class UserController : NpmControllerBase {
+
         private static readonly OAuth2Configuration GitHubConfiguration = new OAuth2Configuration() {
             AuthorizationEndpoint = new Uri("https://github.curtin.edu.au/login/oauth/authorize"),
             TokenEndpoint = new Uri("https://github.curtin.edu.au/login/oauth/access_token"),
             ClientId = "cec4accd758f6c85a888",
             ClientSecret = "795516cf170e9bb0ccbe4a0243bdac5cde5a3dc4",
-            Scopes = new[] { "public_repo", "read:org", "user:email" }
+            Scopes = new[] { "public_repo", "read:org", "user:email" },
+            Profile = new UserProfileConfiguration() {
+                Endpoint = new Uri("https://github.curtin.edu.au/api/v3/user"),
+                IdPath = "$.id",
+                EmailPath = "$.email"
+            }
         };
 
-        private static readonly SsoRequestOptions StaticRequestOptions = new SsoRequestOptions() {
+        private static readonly SsoAuthorizationOptions StaticRequestOptions = new SsoAuthorizationOptions() {
             State = "dumb.state",
             RedirectUri = new Uri("http://localhost:5000/authorize")
         };
@@ -53,7 +59,9 @@ namespace PackageRepository.Controllers.Npm {
 
         [HttpGet("authorize")]
         public async Task<IActionResult> Authenticate() {
-            var principal = await SsoProvider.AuthenticateAsync(HttpContext.Features.Get<IHttpContext>().Request, StaticRequestOptions);
+            var parameters = Request.Query.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Single());
+            var profile = await SsoProvider.CompleteAuthorizationAsync(parameters, StaticRequestOptions);
+
             return Ok(new { token = "" });
         }
     }
